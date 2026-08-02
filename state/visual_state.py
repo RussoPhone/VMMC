@@ -16,7 +16,7 @@ class VisualStateController:
         self.state = VisualState()
 
     def update(self, context, dt: float) -> VisualState:
-        target_scale = 1.0 + context.energy * 0.06 + + max(0.0, context.energy_trend) * 0.4
+        target_scale = 1.0 + context.energy * 0.6 + max(0.0, context.energy_trend) * 0.4
         target_deformation = context.tension
         target_agitation = min(1.0, context.activity * 1.5 + context.tension * 0.5)
         target_smoothness = max(0.1, 1.0 - context.tension * 0.7)
