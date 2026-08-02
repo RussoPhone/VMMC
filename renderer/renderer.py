@@ -2,7 +2,7 @@ from typing import List, Optional, Sequence, Tuple
 import pygame 
 
 class Renderer:
-    def __init(self, width: int = 800, height: int = 800, title: str = "Visualizador de Musica com Memoria Contextual"):
+    def __init__(self, width: int = 800, height: int = 800, title: str = "Visualizador de Musica com Memoria Contextual"):
         pygame.init()
         pygame.display.set_caption(title)
         self.screen = pygame.display.set_mode((width, height))
