@@ -88,6 +88,6 @@ class AudioAnalyzer:
 
         if flux > threshold and time_ok:
             self._last_beat_time = timestamp
-            return False
+            return True
         return False
 
