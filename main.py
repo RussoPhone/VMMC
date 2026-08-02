@@ -58,7 +58,7 @@ def _build_debug_lines(features, context, visual_state) -> list:
     if features:
         lines.append(
             f"amp={features.amplitude:.2f} bass={features.bass:.2f} "
-            f"mid={features.mid:.2f} treble={features.treble:.2f}"
+            f"mid={features.mid:.2f} treble={features.treble:.2f} "
             f"flux={features.spectral_flux:.2f} beat={'*' if features.beat else ' '}"
         )
     if context:
