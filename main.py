@@ -27,6 +27,15 @@ def select_audio_folder_with_dolphin() -> str:
                 title="Selecione uma pasta com arquivos de música"
             )
             if folder_path:
+                # Verifica se o caminho é válido
+                if not os.path.exists(folder_path):
+                    print(f"Erro: O caminho '{folder_path}' não existe.")
+                    return None
+                    
+                if not os.path.isdir(folder_path):
+                    print(f"Erro: '{folder_path}' não é um diretório válido.")
+                    return None
+                
                 # Procura por arquivos de áudio na pasta
                 audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac'}
                 folder = Path(folder_path)
@@ -46,9 +55,18 @@ def select_audio_folder_with_dolphin() -> str:
     # Fallback para seleção manual de pasta
     try:
         print("Selecione uma pasta com arquivos de música:")
+        print("Exemplos de caminhos válidos:")
+        print("- Windows: C:\\Users\\SeuNome\\Music")
+        print("- Linux/Mac: /home/seunome/Música ou /Users/seunome/Music")
         folder_path = input().strip()
+        
+        # Verifica se o caminho é válido
+        if not os.path.exists(folder_path):
+            print(f"Erro: O caminho '{folder_path}' não existe.")
+            return None
+            
         if not os.path.isdir(folder_path):
-            print("Caminho inválido.")
+            print(f"Erro: '{folder_path}' não é um diretório válido.")
             return None
             
         # Procura por arquivos de áudio na pasta
