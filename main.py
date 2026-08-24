@@ -11,57 +11,17 @@ from geometry.deformation import deform_shape
 from renderer.renderer import Renderer 
 
 def select_audio_file() -> str:
-    """Tenta abrir uma janela de seleção de arquivo se possível, caso contrário pede manualmente."""
+    """Solicita manualmente a seleção de arquivo de música."""
     try:
-        import pygame
-        pygame.init()
-        
-        # Cria uma janela pequena para seleção de arquivo
-        screen = pygame.display.set_mode((400, 200))
-        pygame.display.set_caption("Selecionar Música")
-        font = pygame.font.SysFont(None, 36)
-        
-        running = True
-        selected_file = None
-        
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
-                    elif event.key == pygame.K_RETURN and selected_file:
-                        running = False
-            
-            screen.fill((30, 30, 50))
-            
-            # Mostra instruções
-            text = font.render("Pressione Enter para selecionar um arquivo de música", True, (255, 255, 255))
-            screen.blit(text, (20, 50))
-            
-            text = font.render("ou ESC para sair", True, (200, 200, 200))
-            screen.blit(text, (20, 100))
-            
-            pygame.display.flip()
-            
-            # Se já temos um arquivo selecionado, podemos sair
-            if selected_file:
-                break
-                
-        pygame.quit()
-        
-        # Se não foi selecionado arquivo, pedimos manualmente
-        if not selected_file:
-            print("Selecione um arquivo de música:")
-            file_path = input().strip()
-            return file_path
-            
-    except ImportError:
-        # Se Pygame não estiver disponível, pedimos manualmente
         print("Selecione um arquivo de música:")
         file_path = input().strip()
         return file_path
+    except KeyboardInterrupt:
+        print("\nOperação cancelada pelo usuário.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Erro ao selecionar arquivo: {e}")
+        sys.exit(1)
 
 def main(audio_path: str) -> None:
     audio_input = AudioInput(audio_path)
