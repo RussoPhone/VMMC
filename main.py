@@ -1,5 +1,6 @@
 import sys
 import time
+import os
 
 from audio.input import AudioInput
 from audio.analyzer import AudioAnalyzer 
@@ -8,6 +9,59 @@ from state.visual_state import VisualStateController
 from geometry.shape import create_circle_shape
 from geometry.deformation import deform_shape  
 from renderer.renderer import Renderer 
+
+def select_audio_file() -> str:
+    """Tenta abrir uma janela de seleção de arquivo se possível, caso contrário pede manualmente."""
+    try:
+        import pygame
+        pygame.init()
+        
+        # Cria uma janela pequena para seleção de arquivo
+        screen = pygame.display.set_mode((400, 200))
+        pygame.display.set_caption("Selecionar Música")
+        font = pygame.font.SysFont(None, 36)
+        
+        running = True
+        selected_file = None
+        
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key == pygame.K_RETURN and selected_file:
+                        running = False
+            
+            screen.fill((30, 30, 50))
+            
+            # Mostra instruções
+            text = font.render("Pressione Enter para selecionar um arquivo de música", True, (255, 255, 255))
+            screen.blit(text, (20, 50))
+            
+            text = font.render("ou ESC para sair", True, (200, 200, 200))
+            screen.blit(text, (20, 100))
+            
+            pygame.display.flip()
+            
+            # Se já temos um arquivo selecionado, podemos sair
+            if selected_file:
+                break
+                
+        pygame.quit()
+        
+        # Se não foi selecionado arquivo, pedimos manualmente
+        if not selected_file:
+            print("Selecione um arquivo de música:")
+            file_path = input().strip()
+            return file_path
+            
+    except ImportError:
+        # Se Pygame não estiver disponível, pedimos manualmente
+        print("Selecione um arquivo de música:")
+        file_path = input().strip()
+        return file_path
 
 def main(audio_path: str) -> None:
     audio_input = AudioInput(audio_path)
@@ -74,7 +128,14 @@ def _build_debug_lines(features, context, visual_state) -> list:
     return lines
 
 if __name__ == "__main__":
+    # Se nenhum argumento foi passado, tenta selecionar arquivo
     if len(sys.argv) < 2:
-        print("Uso: python main.py road/to/music.wav")
-        sys.exit(1)
-    main(sys.argv[1])
+        print("Nenhum arquivo de música especificado.")
+        audio_path = select_audio_file()
+        if not audio_path:
+            print("Nenhum arquivo selecionado. Saindo.")
+            sys.exit(1)
+    else:
+        audio_path = sys.argv[1]
+    
+    main(audio_path)
