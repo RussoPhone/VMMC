@@ -1,6 +1,7 @@
 import sys
 import time
 import os
+from pathlib import Path
 
 # Adicionando suporte ao Dolphin
 try:
@@ -17,32 +18,56 @@ from geometry.shape import create_circle_shape
 from geometry.deformation import deform_shape  
 from renderer.renderer import Renderer 
 
-def select_audio_file_with_dolphin() -> str:
-    """Solicita seleção de arquivo de música com integração ao Dolphin."""
+def select_audio_folder_with_dolphin() -> str:
+    """Solicita seleção de pasta com integração ao Dolphin e retorna o primeiro arquivo de áudio encontrado."""
     if DOLPHIN_AVAILABLE:
         try:
-            # Tenta usar o Dolphin para seleção de arquivo
-            file_path = dolphin.select_file(
-                title="Selecione um arquivo de música",
-                filters=[("Arquivos de áudio", "*.mp3 *.wav *.flac *.ogg")]
+            # Tenta usar o Dolphin para seleção de pasta
+            folder_path = dolphin.select_folder(
+                title="Selecione uma pasta com arquivos de música"
             )
-            if file_path:
-                return file_path
+            if folder_path:
+                # Procura por arquivos de áudio na pasta
+                audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac'}
+                folder = Path(folder_path)
+                
+                # Encontra o primeiro arquivo de áudio compatível
+                for file in folder.iterdir():
+                    if file.is_file() and file.suffix.lower() in audio_extensions:
+                        return str(file)
+                        
+                print("Nenhum arquivo de áudio encontrado na pasta selecionada.")
+                return None
         except Exception as e:
             print(f"[AVISO] Falha ao usar Dolphin: {e}")
             # Se Dolphin falhar, cai para seleção manual
             pass
     
-    # Fallback para seleção manual
+    # Fallback para seleção manual de pasta
     try:
-        print("Selecione um arquivo de música:")
-        file_path = input().strip()
-        return file_path
+        print("Selecione uma pasta com arquivos de música:")
+        folder_path = input().strip()
+        if not os.path.isdir(folder_path):
+            print("Caminho inválido.")
+            return None
+            
+        # Procura por arquivos de áudio na pasta
+        audio_extensions = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac'}
+        folder = Path(folder_path)
+        
+        # Encontra o primeiro arquivo de áudio compatível
+        for file in folder.iterdir():
+            if file.is_file() and file.suffix.lower() in audio_extensions:
+                return str(file)
+                
+        print("Nenhum arquivo de áudio encontrado na pasta selecionada.")
+        return None
+        
     except KeyboardInterrupt:
         print("\nOperação cancelada pelo usuário.")
         sys.exit(1)
     except Exception as e:
-        print(f"Erro ao selecionar arquivo: {e}")
+        print(f"Erro ao selecionar pasta: {e}")
         sys.exit(1)
 
 def main(audio_path: str) -> None:
@@ -110,12 +135,8 @@ def _build_debug_lines(features, context, visual_state) -> list:
     return lines
 
 if __name__ == "__main__":
-    # Abre imediatamente o Dolphin para seleção do arquivo de música
-    if not DOLPHIN_AVAILABLE:
-        print("Dolphin não disponível. Usando seleção manual.")
-        audio_path = select_audio_file_with_dolphin()
-    else:
-        audio_path = select_audio_file_with_dolphin()
+    # Abre imediatamente o Dolphin para seleção da pasta
+    audio_path = select_audio_folder_with_dolphin()
     
     # Verifica se um arquivo foi selecionado
     if not audio_path:
