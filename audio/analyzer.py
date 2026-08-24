@@ -90,4 +90,3 @@ class AudioAnalyzer:
             self._last_beat_time = timestamp
             return True
         return False
-

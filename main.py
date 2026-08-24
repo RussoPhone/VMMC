@@ -78,5 +78,3 @@ if __name__ == "__main__":
         print("Uso: python main.py road/to/music.wav")
         sys.exit(1)
     main(sys.argv[1])
-        
-

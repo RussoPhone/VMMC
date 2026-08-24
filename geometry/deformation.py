@@ -28,5 +28,3 @@ def deform_shape(shape, visual_state, time_elapsed: float) -> List[Tuple[float, 
         vertices.append((x, y))
 
     return vertices 
-
-
