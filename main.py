@@ -110,14 +110,16 @@ def _build_debug_lines(features, context, visual_state) -> list:
     return lines
 
 if __name__ == "__main__":
-    # Se nenhum argumento foi passado, tenta selecionar arquivo
-    if len(sys.argv) < 2:
-        print("Nenhum arquivo de música especificado.")
+    # Abre imediatamente o Dolphin para seleção do arquivo de música
+    if not DOLPHIN_AVAILABLE:
+        print("Dolphin não disponível. Usando seleção manual.")
         audio_path = select_audio_file_with_dolphin()
-        if not audio_path:
-            print("Nenhum arquivo selecionado. Saindo.")
-            sys.exit(1)
     else:
-        audio_path = sys.argv[1]
+        audio_path = select_audio_file_with_dolphin()
+    
+    # Verifica se um arquivo foi selecionado
+    if not audio_path:
+        print("Nenhum arquivo selecionado. Saindo.")
+        sys.exit(1)
     
     main(audio_path)
