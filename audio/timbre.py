@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 @dataclass 
 class TimbreProfile:
     bass_weight: float 
