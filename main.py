@@ -2,6 +2,13 @@ import sys
 import time
 import os
 
+# Adicionando suporte ao Dolphin
+try:
+    import dolphin
+    DOLPHIN_AVAILABLE = True
+except ImportError:
+    DOLPHIN_AVAILABLE = False
+
 from audio.input import AudioInput
 from audio.analyzer import AudioAnalyzer 
 from memory.musical_memory import MusicalMemory 
@@ -10,8 +17,23 @@ from geometry.shape import create_circle_shape
 from geometry.deformation import deform_shape  
 from renderer.renderer import Renderer 
 
-def select_audio_file() -> str:
-    """Solicita manualmente a seleção de arquivo de música."""
+def select_audio_file_with_dolphin() -> str:
+    """Solicita seleção de arquivo de música com integração ao Dolphin."""
+    if DOLPHIN_AVAILABLE:
+        try:
+            # Tenta usar o Dolphin para seleção de arquivo
+            file_path = dolphin.select_file(
+                title="Selecione um arquivo de música",
+                filters=[("Arquivos de áudio", "*.mp3 *.wav *.flac *.ogg")]
+            )
+            if file_path:
+                return file_path
+        except Exception as e:
+            print(f"[AVISO] Falha ao usar Dolphin: {e}")
+            # Se Dolphin falhar, cai para seleção manual
+            pass
+    
+    # Fallback para seleção manual
     try:
         print("Selecione um arquivo de música:")
         file_path = input().strip()
@@ -91,7 +113,7 @@ if __name__ == "__main__":
     # Se nenhum argumento foi passado, tenta selecionar arquivo
     if len(sys.argv) < 2:
         print("Nenhum arquivo de música especificado.")
-        audio_path = select_audio_file()
+        audio_path = select_audio_file_with_dolphin()
         if not audio_path:
             print("Nenhum arquivo selecionado. Saindo.")
             sys.exit(1)
