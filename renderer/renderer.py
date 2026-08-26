@@ -1,11 +1,12 @@
 """
-renderer/renderer.py (v3 - Totalmente robusto)
+renderer/renderer.py (v4 - Eventos expostos para atalhos)
 
 Tolera falta de pygame.mixer, pygame.font, e até display.
 Modo texto puro se nada funcionar.
+Retorna lista de eventos pygame para o main processar atalhos (ex: 'O' abrir arquivo).
 """
 
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Union
 import os
 
 import pygame
@@ -47,20 +48,27 @@ class Renderer:
             print(f"        HUD sera texto puro, sem fonte grafica")
             self.font = None
 
-    def handle_events(self) -> bool:
-        """Retorna False se o usuario pediu para fechar a janela."""
+    def handle_events(self) -> Union[List[pygame.event.Event], bool]:
+        """
+        Processa fila de eventos.
+        Retorna:
+          - List[pygame.event.Event]: Modo gráfico (main pode filtrar teclas).
+          - True: Modo headless (rodando, sem eventos pygame).
+          - False: Pedido de quit (modo headless ou erro).
+        """
         if self.headless or self.screen is None:
-            return True  # modo texto: nunca fecha automaticamente
+            # Modo texto: não há eventos pygame, apenas roda
+            return True
 
         try:
-            for event in pygame.event.get():
+            events = pygame.event.get()
+            for event in events:
                 if event.type == pygame.QUIT:
                     return False
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    return False
+                # Não tratamos ESC aqui, deixamos o main decidir
+            return events
         except Exception:
-            pass  # ignora erros de event loop
-        return True
+            return []  # Retorna lista vazia em erro
 
     def draw(
         self,
