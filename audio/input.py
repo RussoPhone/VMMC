@@ -1,8 +1,7 @@
 """
-audio/input.py (v3 FINAL)
+audio/input.py (v3 FINAL - Corrigido)
 
-Versão que REALMENTE tolera mixer indisponível.
-Nenhuma tentativa de acessar pygame.mixer sem try/except.
+Versão com inicialização robusta do pygame.mixer e melhor feedback.
 """
 
 from dataclasses import dataclass
@@ -40,15 +39,16 @@ class AudioInput:
         self._finished = False
         self._play_start_time = None
         
-        # Detecta se mixer está disponível
+        # Detecta se mixer está disponível COM PARÂMETROS EXPLÍCITOS
         self._mixer_available = False
         try:
-            # Testa se mixer consegue ser importado e inicializado
-            pygame.mixer.init()
+            # Inicializa com parâmetros padrão CD quality para máxima compatibilidade
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
             self._mixer_available = True
-        except (AttributeError, NotImplementedError, Exception):
+            print("[INFO] pygame.mixer inicializado com sucesso")
+        except (AttributeError, NotImplementedError, Exception) as e:
             self._mixer_available = False
-            print("[AVISO] pygame.mixer nao disponivel, exec modo offline")
+            print(f"[AVISO] pygame.mixer nao disponivel ({e}), exec modo offline")
 
     def play(self) -> None:
         """Inicia a reprodução (ou modo offline se mixer indisponível)."""
@@ -56,8 +56,13 @@ class AudioInput:
             try:
                 pygame.mixer.music.load(self.file_path)
                 pygame.mixer.music.play()
+                # Pequena pausa para garantir que o playback iniciou
+                time.sleep(0.05)
+                if not pygame.mixer.music.get_busy():
+                    raise RuntimeError("pygame.mixer.music.play() nao iniciou playback")
+                print("[INFO] Reproducao de audio iniciada")
             except Exception as e:
-                print(f"[AVISO] Falha ao tocar audio ({e}) - modo offline")
+                print(f"[ERRO] Falha ao tocar audio ({e}) - modo offline")
                 self._mixer_available = False
 
         self._playing = True

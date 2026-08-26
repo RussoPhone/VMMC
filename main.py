@@ -4,6 +4,8 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 
+import pygame
+
 from audio.input import AudioInput
 from audio.analyzer import AudioAnalyzer 
 from memory.musical_memory import MusicalMemory 
@@ -68,6 +70,7 @@ def main(audio_path: str = None) -> None:
     latest_context = None 
     running = True 
     last_dir = os.path.dirname(audio_path)
+    audio_warning_shown = False
 
     while running:
         # 3. Eventos (Renderer retorna lista de eventos pygame)
@@ -91,6 +94,7 @@ def main(audio_path: str = None) -> None:
                         last_time = start_time
                         latest_features = None
                         latest_context = None
+                        audio_warning_shown = False
 
         now = time.time() 
         dt = now - last_time 
@@ -109,8 +113,13 @@ def main(audio_path: str = None) -> None:
         time_elapsed = now - start_time
         vertices = deform_shape(shape, visual_state, time_elapsed)
 
-        debug_lines = _build_debug_lines(latest_features, latest_context, visual_state, audio_path)
+        debug_lines = _build_debug_lines(latest_features, latest_context, visual_state, audio_path, audio_input)
         renderer.draw(vertices, debug_lines)
+
+        # Mostra aviso visual se audio nao esta tocando mas visuals estao ativos
+        if not audio_warning_shown and not audio_input._mixer_available and latest_features is not None:
+            print("[AVISO] Audio offline: visuals reagem mas sem som. Verifique pygame.mixer.")
+            audio_warning_shown = True
 
         if audio_input.is_finished():
             # Auto-loop ou parar? Vamos parar por enquanto.
@@ -118,12 +127,17 @@ def main(audio_path: str = None) -> None:
 
     renderer.quit()
 
-def _build_debug_lines(features, context, visual_state, current_file) -> list:
+def _build_debug_lines(features, context, visual_state, current_file, audio_input) -> list:
     lines = [
         "VISUALIZADOR DE MUSICA COM MEMORIA CONTEXTUAL",
         f"Arquivo: {os.path.basename(current_file)}",
         "Controles: [O] Abrir arquivo | [ESC] Sair"
     ]
+    
+    # Indicador de status de audio
+    audio_status = "ONLINE" if audio_input._mixer_available else "OFFLINE (sem som)"
+    lines.append(f"Audio: {audio_status}")
+    
     if features:
         lines.append(
             f"amp={features.amplitude:.2f} bass={features.bass:.2f} "
@@ -143,8 +157,5 @@ def _build_debug_lines(features, context, visual_state, current_file) -> list:
     return lines
 
 if __name__ == "__main__":
-    # Importa pygame aqui apenas se necessário para as constantes de tecla
-    import pygame
-    
     cli_path = sys.argv[1] if len(sys.argv) > 1 else None
     main(cli_path)
