@@ -10,7 +10,6 @@ import os
 
 import pygame
 
-#FAZER ALTERAÇÕES NA CLASSE RENDERER PARA OCUPAR MAIS FORMAS BASEADAS NO RITMO DA MUSICA
 class Renderer:
     def __init__(
         self,
