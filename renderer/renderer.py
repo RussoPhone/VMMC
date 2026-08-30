@@ -11,6 +11,12 @@ import os
 
 import pygame
 
+
+def viewport_for_size(width: int, height: int) -> Tuple[Tuple[int, int], float]:
+    """Return a centered viewport that preserves the shape proportions."""
+    return (width // 2, height // 2), min(width, height) * 0.3
+
+
 class Renderer:
     def __init__(
         self,
@@ -20,8 +26,7 @@ class Renderer:
     ):
         self.width = width
         self.height = height
-        self.center = (width // 2, height // 2)
-        self.radius_px = min(width, height) * 0.3
+        self.center, self.radius_px = viewport_for_size(width, height)
         self.clock = pygame.time.Clock()
         
         self.screen = None
@@ -33,7 +38,7 @@ class Renderer:
         try:
             pygame.init()
             pygame.display.set_caption(title)
-            self.screen = pygame.display.set_mode((width, height))
+            self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
         except Exception as e:
             print(f"[AVISO] Nao consegui criar janela grafica ({e})")
             print(f"        Usando modo TEXTO no terminal")
@@ -86,6 +91,8 @@ class Renderer:
 
         # Modo grafico
         try:
+            self.width, self.height = self.screen.get_size()
+            self.center, self.radius_px = viewport_for_size(self.width, self.height)
             self.screen.fill((10, 10, 18))
 
             # Desenha a forma
