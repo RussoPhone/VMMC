@@ -1,2 +1,12 @@
 .aider*
 .worktrees/
+.venv/
+venv/
+env/
+v/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+*.egg-info/
