@@ -60,7 +60,7 @@ class FakeOutputStream:
 
 - [ ] **Step 2: Run the focused tests and verify RED**
 
-Run: `.venv/bin/python -m unittest tests.test_audio_input -v`
+Run: `.venv/bin/python -m unittest -v tests.test_audio_input`
 
 Expected: FAIL because `AudioInput` does not accept `stream_factory`, uses mono playback, and chooses blocks from wall-clock time.
 
@@ -100,7 +100,7 @@ Use a daemon thread plus `join(0.5)` around `get_next_frame()` and assert it com
 
 - [ ] **Step 5: Run the lifecycle tests and verify RED**
 
-Run: `.venv/bin/python -m unittest tests.test_audio_input -v`
+Run: `.venv/bin/python -m unittest -v tests.test_audio_input`
 
 Expected: FAIL on the first still-missing lifecycle behavior, with no test process hanging.
 
@@ -110,7 +110,7 @@ Use separate playback and analysis cursors. Snapshot cursor/state under a non-re
 
 - [ ] **Step 7: Run audio tests and verify GREEN**
 
-Run: `.venv/bin/python -m unittest tests.test_audio_input -v`
+Run: `.venv/bin/python -m unittest -v tests.test_audio_input`
 
 Expected: all audio input tests PASS with no warnings or leaked threads.
 
@@ -141,7 +141,7 @@ Use a small fake input with two real `AudioFrame` values and no private attribut
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
-Run: `.venv/bin/python -m unittest tests.test_main -v`
+Run: `.venv/bin/python -m unittest -v tests.test_main`
 
 Expected: FAIL because `drain_audio_frames` is absent and the HUD accesses `_mixer_available`.
 
@@ -173,7 +173,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run main and audio tests and verify GREEN**
 
-Run: `.venv/bin/python -m unittest tests.test_main tests.test_audio_input -v`
+Run: `.venv/bin/python -m unittest -v tests.test_main tests.test_audio_input`
 
 Expected: PASS.
 
@@ -209,7 +209,7 @@ Patch `pygame.display.set_mode`, construct `Renderer`, and assert the call is `s
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
-Run: `.venv/bin/python -m unittest tests.test_renderer -v`
+Run: `.venv/bin/python -m unittest -v tests.test_renderer`
 
 Expected: FAIL because the helper is absent and the mode is not resizable.
 
@@ -312,7 +312,7 @@ Expected: exit status 0 for every command and no warnings from project code.
 
 - [ ] **Step 2: Run the synthetic pipeline smoke test**
 
-Run: `.venv/bin/python -m unittest tests.test_audio_input.AudioInputTests.test_stereo_callback_and_analysis_frames_are_sequential -v`
+Run: `.venv/bin/python -m unittest -v tests.test_audio_input.AudioInputTests.test_stereo_callback_and_analysis_frames_are_sequential`
 
 Expected: PASS. This test creates a real stereo WAV, executes the production callback through the deterministic stream, drains every analysis frame, and verifies ordering, channel handling, final state, and frame count without requiring an audio server.
 

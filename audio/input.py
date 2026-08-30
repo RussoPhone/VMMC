@@ -1,22 +1,30 @@
-"""
-audio/input.py (v4 - Linux Compatible com sounddevice)
-
-Substitui pygame.mixer por sounddevice para reprodução confiável no Linux.
-Mantém a mesma API pública (play, get_position_seconds, get_next_frame).
-"""
+"""Audio decoding, playback, and analysis-frame synchronization."""
 
 from dataclasses import dataclass
-import time
+from enum import Enum
 import threading
-from typing import Optional
+from typing import Callable, Optional
+
 import numpy as np
-import soundfile as sf
 import sounddevice as sd
+import soundfile as sf
+
+
+class PlaybackState(Enum):
+    STOPPED = "stopped"
+    PLAYING = "playing"
+    FINISHED = "finished"
+    FAILED = "failed"
+
+
+class AudioPlaybackError(RuntimeError):
+    """Raised when an audio output stream cannot be started."""
 
 
 @dataclass
 class AudioFrame:
-    """Um pequeno pedaço temporal de áudio, pronto para análise."""
+    """A fixed-duration mono frame ready for musical analysis."""
+
     samples: np.ndarray
     timestamp: float
     samplerate: int
@@ -24,222 +32,166 @@ class AudioFrame:
 
 
 class AudioInput:
-    def __init__(self, file_path: str, frame_duration: float = 1.0 / 30.0):
+    def __init__(
+        self,
+        file_path: str,
+        frame_duration: float = 1.0 / 30.0,
+        stream_factory: Optional[Callable[..., object]] = None,
+    ):
+        playback_samples, samplerate = sf.read(
+            file_path,
+            dtype="float32",
+            always_2d=True,
+        )
+
         self.file_path = file_path
         self.frame_duration = frame_duration
-
-        # Carrega áudio completo na memória (float32, mono)
-        data, samplerate = sf.read(file_path, dtype="float32", always_2d=True)
-        data = data.mean(axis=1)  # stereo -> mono
-
-        self.samples = data
+        self._playback_samples = np.ascontiguousarray(playback_samples)
+        self._analysis_samples = self._playback_samples.mean(axis=1)
+        self.samples = self._analysis_samples
         self.samplerate = samplerate
-        self.total_samples = len(data)
+        self.channels = self._playback_samples.shape[1]
+        self.total_samples = len(self._playback_samples)
         self.frame_size = max(1, int(self.samplerate * self.frame_duration))
-        self.total_duration = len(data) / samplerate
+        self.total_duration = self.total_samples / self.samplerate
 
-        # Estado de reprodução
-        self._playing = False
-        self._finished = False
-        self._last_frame_index = -1
-        self._play_start_time: Optional[float] = None
-        self._stream: Optional[sd.OutputStream] = None
-        self._stream_start_time: Optional[float] = None
+        self._stream_factory = stream_factory or sd.OutputStream
+        self._stream = None
+        self._playback_cursor = 0
+        self._analysis_cursor = 0
         self._lock = threading.Lock()
+        self._output_finished = threading.Event()
 
-        # Verifica dispositivos de saída disponíveis
-        self._device_available = self._check_audio_device()
-
-    def _check_audio_device(self) -> bool:
-        """Verifica se há dispositivo de saída de áudio disponível."""
-        try:
-            devices = sd.query_devices()
-            output_devices = [d for d in devices if d['max_output_channels'] > 0]
-            if not output_devices:
-                print("[AVISO] Nenhum dispositivo de saída de áudio encontrado")
-                return False
-            # Tenta abrir stream de teste
-            with sd.OutputStream(samplerate=self.samplerate, channels=1, dtype='float32'):
-                pass
-            print("[INFO] Dispositivo de áudio detectado e testado com sucesso")
-            return True
-        except Exception as e:
-            print(f"[AVISO] Dispositivo de áudio não disponível ({e}), modo offline")
-            return False
+        self.state = PlaybackState.STOPPED
+        self.error_message: Optional[str] = None
 
     def play(self) -> None:
-        """Inicia a reprodução de áudio (ou modo offline se sem dispositivo)."""
+        """Start output through the configured SoundDevice-compatible stream."""
         with self._lock:
-            if self._playing:
+            if self.state is PlaybackState.PLAYING:
                 return
+            self._playback_cursor = 0
+            self._analysis_cursor = 0
+            self._output_finished.clear()
+            self.error_message = None
+            self.state = PlaybackState.PLAYING
 
-            self._playing = True
-            self._finished = False
-            self._last_frame_index = -1
-            self._play_start_time = None
-            self._stream_start_time = None
-
-            if self._device_available:
+        try:
+            stream = self._stream_factory(
+                samplerate=self.samplerate,
+                channels=self.channels,
+                dtype="float32",
+                callback=self._audio_callback,
+                finished_callback=self._playback_finished,
+            )
+            with self._lock:
+                self._stream = stream
+            stream.start()
+        except Exception as exc:
+            with self._lock:
+                failed_stream = self._stream
+                self._stream = None
+                self.state = PlaybackState.FAILED
+                self.error_message = str(exc)
+            if failed_stream is not None:
                 try:
-                    # Cria stream de saída não-bloqueante
-                    self._stream = sd.OutputStream(
-                        samplerate=self.samplerate,
-                        channels=1,
-                        dtype='float32',
-                        callback=self._audio_callback,
-                        finished_callback=self._playback_finished
-                    )
-                    self._stream.start()
-                    self._stream_start_time = time.time()
-                    print("[INFO] Reprodução de áudio iniciada (sounddevice)")
-                except Exception as e:
-                    print(f"[ERRO] Falha ao iniciar stream ({e}) - modo offline")
-                    self._device_available = False
-                    self._stream = None
+                    failed_stream.close()
+                except Exception:
+                    pass
+            raise AudioPlaybackError(f"Falha ao iniciar a saída de áudio: {exc}") from exc
 
-            if not self._device_available:
-                # Modo offline: apenas marca tempo inicial
-                self._play_start_time = time.time()
-                print("[INFO] Modo offline iniciado (sem reprodução de áudio)")
+    def _audio_callback(self, outdata, frames, time_info, status) -> None:
+        """Fill one output buffer with the next contiguous source samples."""
+        del time_info, status
+        outdata.fill(0)
 
-    def _audio_callback(self, outdata: np.ndarray, frames: int, time_info, status) -> None:
-        """Callback do sounddevice para preencher buffer de saída."""
-        if status:
-            print(f"[AVISO] Stream status: {status}")
+        with self._lock:
+            if self.state is not PlaybackState.PLAYING:
+                raise sd.CallbackStop()
+            start = self._playback_cursor
 
-        current_pos = self._get_stream_position_samples()
-        end_pos = current_pos + frames
+        end = min(start + frames, self.total_samples)
+        copied = end - start
+        if copied > 0:
+            outdata[:copied] = self._playback_samples[start:end]
 
-        if current_pos >= self.total_samples:
-            outdata.fill(0)
+        with self._lock:
+            self._playback_cursor = end
+
+        if end >= self.total_samples:
             raise sd.CallbackStop()
-
-        chunk = self.samples[current_pos:end_pos]
-        if len(chunk) < frames:
-            outdata[:len(chunk), 0] = chunk
-            outdata[len(chunk):, 0] = 0
-            raise sd.CallbackStop()
-        else:
-            outdata[:, 0] = chunk
 
     def _playback_finished(self) -> None:
-        """Callback chamado quando stream termina naturalmente."""
+        """Record natural completion without closing from the callback thread."""
+        self._output_finished.set()
         with self._lock:
-            self._finished = True
-            self._playing = False
-            if self._stream:
-                self._stream.close()
-                self._stream = None
-            print("[INFO] Reprodução finalizada")
-
-    def _get_stream_position_samples(self) -> int:
-        """Obtém posição atual do stream em samples."""
-        if self._stream and self._stream_start_time is not None:
-            elapsed = time.time() - self._stream_start_time
-            return int(elapsed * self.samplerate)
-        return 0
-
-    def is_finished(self) -> bool:
-        with self._lock:
-            return self._finished
+            if self.state is PlaybackState.PLAYING:
+                self.state = PlaybackState.FINISHED
 
     def get_position_seconds(self) -> float:
-        """Posição atual de reprodução, em segundos."""
+        """Return the sample-driven output position in seconds."""
         with self._lock:
-            if self._device_available and self._stream and self._stream_start_time is not None:
-                try:
-                    # Usa tempo do stream para precisão
-                    elapsed = time.time() - self._stream_start_time
-                    pos = max(0.0, min(elapsed, self.total_duration))
-                    return pos
-                except Exception:
-                    pass
-
-            # Fallback: modo offline ou erro no stream
-            if self._play_start_time is None:
-                return 0.0
-            elapsed = time.time() - self._play_start_time
-            return max(0.0, min(elapsed, self.total_duration))
+            cursor = self._playback_cursor
+        return cursor / self.samplerate
 
     def get_next_frame(self) -> Optional[AudioFrame]:
-        """
-        Retorna o próximo AudioFrame correspondente à posição atual,
-        ou None se ainda não houver frame novo disponível.
-        """
+        """Return the next elapsed analysis frame, preserving temporal order."""
         with self._lock:
-            if not self._playing:
+            if self.state not in (PlaybackState.PLAYING, PlaybackState.FINISHED):
                 return None
 
-            # Inicializa relógio offline na primeira chamada
-            if self._play_start_time is None:
-                self._play_start_time = time.time()
-
-            # Verifica se stream ainda ativo (modo online)
-            if self._device_available:
-                try:
-                    if self._stream is None or not self._stream.active:
-                        if not self._finished:
-                            self._finished = True
-                            self._playing = False
-                        return None
-                except Exception:
-                    pass
-
-            position = self.get_position_seconds()
-
-            # Verifica fim de áudio (modo offline ou fim natural)
-            if position >= self.total_duration:
-                if not self._finished:
-                    self._finished = True
-                    self._playing = False
-                    if self._stream:
-                        try:
-                            self._stream.stop()
-                            self._stream.close()
-                        except Exception:
-                            pass
-                        self._stream = None
-                return None
-
-            frame_index = int(position * self.samplerate / self.frame_size)
-
-            if frame_index == self._last_frame_index:
-                return None  # mesmo frame temporal
-
-            start = frame_index * self.frame_size
-            end = start + self.frame_size
-
+            start = self._analysis_cursor
             if start >= self.total_samples:
-                self._finished = True
-                self._playing = False
                 return None
 
-            chunk = self.samples[start:end]
-            if len(chunk) < self.frame_size:
-                chunk = np.pad(chunk, (0, self.frame_size - len(chunk)))
+            end = min(start + self.frame_size, self.total_samples)
+            frame_is_ready = end <= self._playback_cursor
+            tail_is_ready = self._output_finished.is_set()
+            if not frame_is_ready and not tail_is_ready:
+                return None
 
-            self._last_frame_index = frame_index
+            self._analysis_cursor = end
+            frame_index = start // self.frame_size
 
-            return AudioFrame(
-                samples=chunk,
-                timestamp=position,
-                samplerate=self.samplerate,
-                frame_index=frame_index,
+        chunk = self._analysis_samples[start:end]
+        if len(chunk) < self.frame_size:
+            chunk = np.pad(chunk, (0, self.frame_size - len(chunk)))
+
+        return AudioFrame(
+            samples=chunk,
+            timestamp=start / self.samplerate,
+            samplerate=self.samplerate,
+            frame_index=frame_index,
+        )
+
+    def is_finished(self) -> bool:
+        """Return true after natural output and all analysis frames complete."""
+        with self._lock:
+            return (
+                self.state is PlaybackState.FINISHED
+                and self._analysis_cursor >= self.total_samples
             )
 
     def stop(self) -> None:
-        """Para a reprodução imediatamente."""
+        """Stop and close the output stream. Safe to call repeatedly."""
         with self._lock:
-            self._playing = False
-            self._finished = True
-            if self._stream:
-                try:
-                    self._stream.stop()
-                    self._stream.close()
-                except Exception:
-                    pass
-                self._stream = None
-            print("[INFO] Reprodução parada")
+            stream = self._stream
+            self._stream = None
+            if self.state is not PlaybackState.FAILED:
+                self.state = PlaybackState.STOPPED
+
+        if stream is None:
+            return
+
+        try:
+            if getattr(stream, "active", False):
+                stream.stop()
+        finally:
+            stream.close()
 
     def __del__(self):
-        self.stop()
+        if hasattr(self, "_lock"):
+            try:
+                self.stop()
+            except Exception:
+                pass
