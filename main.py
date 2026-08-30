@@ -1,55 +1,68 @@
+import os
 import sys
 import time
-import os
 import tkinter as tk
 from tkinter import filedialog
 
 import pygame
 
-from audio.input import AudioInput
-from audio.analyzer import AudioAnalyzer 
-from memory.musical_memory import MusicalMemory 
-from state.visual_state import VisualStateController
+from audio.analyzer import AudioAnalyzer
+from audio.input import AudioInput, AudioPlaybackError, PlaybackState
+from geometry.deformation import deform_shape
 from geometry.shape import create_circle_shape
-from geometry.deformation import deform_shape  
-from renderer.renderer import Renderer 
+from memory.musical_memory import MusicalMemory
+from renderer.renderer import Renderer
+from state.visual_state import VisualStateController
 
-# Extensões de áudio suportadas pelo soundfile (libsndfile)
+
 AUDIO_EXTENSIONS = [
     ("Arquivos de Áudio", "*.wav *.flac *.ogg *.mp3 *.aiff *.aif *.au *.raw *.pcm"),
-    ("Todos os arquivos", "*.*")
+    ("Todos os arquivos", "*.*"),
 ]
 
+
 def select_audio_file(initial_dir: str = None) -> str | None:
-    """Abre diálogo nativo do SO para selecionar arquivo de áudio."""
-    # Tkinter precisa de uma root oculta
+    """Open the native file dialog and return the selected audio path."""
     root = tk.Tk()
-    root.withdraw()  # Esconde a janela principal
-    root.attributes('-topmost', True)  # Garante que o diálogo fique no topo
-    
+    root.withdraw()
+    root.attributes("-topmost", True)
+
     try:
         file_path = filedialog.askopenfilename(
             title="Selecionar arquivo de áudio",
             initialdir=initial_dir or os.path.expanduser("~"),
-            filetypes=AUDIO_EXTENSIONS
+            filetypes=AUDIO_EXTENSIONS,
         )
         return file_path if file_path else None
     finally:
         root.destroy()
 
-def reset_pipeline(audio_path: str):
-    """Cria/inicializa todos os componentes do pipeline."""
+
+def drain_audio_frames(audio_input, analyzer, memory):
+    """Analyze every audio frame that elapsed since the previous draw."""
+    latest_features = None
+    latest_context = None
+    while (frame := audio_input.get_next_frame()) is not None:
+        latest_features = analyzer.analyze(frame)
+        latest_context = memory.update(latest_features)
+    return latest_features, latest_context
+
+
+def reset_pipeline(audio_path: str, previous_audio=None):
+    """Create a fresh pipeline after stopping any previous output stream."""
+    if previous_audio is not None:
+        previous_audio.stop()
+
     audio_input = AudioInput(audio_path)
     analyzer = AudioAnalyzer()
     memory = MusicalMemory()
-    visual_controller = VisualStateController() 
+    visual_controller = VisualStateController()
     shape = create_circle_shape(vertex_count=72)
-    
     audio_input.play()
     return audio_input, analyzer, memory, visual_controller, shape
 
+
 def main(audio_path: str = None) -> None:
-    # 1. Seleção de arquivo (CLI > Dialog)
     if not audio_path:
         audio_path = select_audio_file()
         if not audio_path:
@@ -60,84 +73,103 @@ def main(audio_path: str = None) -> None:
         print(f"Erro: O arquivo '{audio_path}' não existe.")
         return
 
-    # 2. Inicialização
-    renderer = Renderer()
-    audio_input, analyzer, memory, visual_controller, shape = reset_pipeline(audio_path)
-    
-    start_time = time.time()
-    last_time = start_time 
-    latest_features = None
-    latest_context = None 
-    running = True 
-    last_dir = os.path.dirname(audio_path)
-    audio_warning_shown = False
+    renderer = None
+    audio_input = None
+    try:
+        renderer = Renderer()
+        audio_input, analyzer, memory, visual_controller, shape = reset_pipeline(audio_path)
 
-    while running:
-        # 3. Eventos (Renderer retorna lista de eventos pygame)
-        events = renderer.handle_events()
-        if events is False:  # Sinal de quit do renderer (headless mode fallback)
-            running = False
-            continue
-            
-        # Processa teclas de atalho
-        for event in events:
-            if event.type == pygame.KEYDOWN:
+        start_time = time.time()
+        last_time = start_time
+        latest_features = None
+        latest_context = None
+        running = True
+        last_dir = os.path.dirname(audio_path)
+
+        while running:
+            events = renderer.handle_events()
+            if events is False:
+                break
+            if events is True:
+                events = []
+
+            for event in events:
+                if event.type != pygame.KEYDOWN:
+                    continue
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_o:  # Tecla 'O' para abrir novo arquivo
+                elif event.key == pygame.K_o:
                     new_path = select_audio_file(initial_dir=last_dir)
                     if new_path:
                         last_dir = os.path.dirname(new_path)
-                        # Reinicializa pipeline completo
-                        audio_input, analyzer, memory, visual_controller, shape = reset_pipeline(new_path)
+                        (
+                            audio_input,
+                            analyzer,
+                            memory,
+                            visual_controller,
+                            shape,
+                        ) = reset_pipeline(new_path, audio_input)
+                        audio_path = new_path
                         start_time = time.time()
                         last_time = start_time
                         latest_features = None
                         latest_context = None
-                        audio_warning_shown = False
 
-        now = time.time() 
-        dt = now - last_time 
-        last_time = now 
+            now = time.time()
+            dt = now - last_time
+            last_time = now
 
-        frame = audio_input.get_next_frame()
-        if frame is not None:
-            latest_features = analyzer.analyze(frame)
-            latest_context = memory.update(latest_features)
+            new_features, new_context = drain_audio_frames(
+                audio_input,
+                analyzer,
+                memory,
+            )
+            if new_features is not None:
+                latest_features = new_features
+                latest_context = new_context
 
-        if latest_context is not None: 
-            visual_state = visual_controller.update(latest_context, dt)
-        else:
-            visual_state = visual_controller.state
+            if latest_context is not None:
+                visual_state = visual_controller.update(latest_context, dt)
+            else:
+                visual_state = visual_controller.state
 
-        time_elapsed = now - start_time
-        vertices = deform_shape(shape, visual_state, time_elapsed)
+            vertices = deform_shape(shape, visual_state, now - start_time)
+            debug_lines = _build_debug_lines(
+                latest_features,
+                latest_context,
+                visual_state,
+                audio_path,
+                audio_input,
+            )
+            renderer.draw(vertices, debug_lines)
 
-        debug_lines = _build_debug_lines(latest_features, latest_context, visual_state, audio_path, audio_input)
-        renderer.draw(vertices, debug_lines)
+            if audio_input.is_finished():
+                running = False
+    except AudioPlaybackError as exc:
+        print(f"[ERRO] {exc}")
+        print("Verifique o dispositivo padrão com 'pactl info' e 'python -m sounddevice'.")
+    finally:
+        if audio_input is not None:
+            audio_input.stop()
+        if renderer is not None:
+            renderer.quit()
 
-        # Mostra aviso visual se audio nao esta tocando mas visuals estao ativos
-        if not audio_warning_shown and not audio_input._mixer_available and latest_features is not None:
-            print("[AVISO] Audio offline: visuals reagem mas sem som. Verifique pygame.mixer.")
-            audio_warning_shown = True
-
-        if audio_input.is_finished():
-            # Auto-loop ou parar? Vamos parar por enquanto.
-            running = False
-
-    renderer.quit()
 
 def _build_debug_lines(features, context, visual_state, current_file, audio_input) -> list:
     lines = [
         "VISUALIZADOR DE MUSICA COM MEMORIA CONTEXTUAL",
         f"Arquivo: {os.path.basename(current_file)}",
-        "Controles: [O] Abrir arquivo | [ESC] Sair"
+        "Controles: [O] Abrir arquivo | [ESC] Sair",
     ]
-    
-    # Indicador de status de audio
-    audio_status = "ONLINE" if audio_input._mixer_available else "OFFLINE (sem som)"
-    lines.append(f"Audio: {audio_status}")
-    
+
+    status_labels = {
+        PlaybackState.STOPPED: "PARADO",
+        PlaybackState.PLAYING: "REPRODUZINDO",
+        PlaybackState.FINISHED: "FINALIZADO",
+        PlaybackState.FAILED: "ERRO",
+    }
+    lines.append(f"Audio: {status_labels[audio_input.state]}")
+
     if features:
         lines.append(
             f"amp={features.amplitude:.2f} bass={features.bass:.2f} "
@@ -156,6 +188,11 @@ def _build_debug_lines(features, context, visual_state, current_file, audio_inpu
     )
     return lines
 
+
+def cli() -> None:
+    audio_path = sys.argv[1] if len(sys.argv) > 1 else None
+    main(audio_path)
+
+
 if __name__ == "__main__":
-    cli_path = sys.argv[1] if len(sys.argv) > 1 else None
-    main(cli_path)
+    cli()
