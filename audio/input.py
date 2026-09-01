@@ -70,6 +70,10 @@ class AudioInput:
         with self._lock:
             if self.state is PlaybackState.PLAYING:
                 return
+
+        self.stop()
+
+        with self._lock:
             self._playback_cursor = 0
             self._analysis_cursor = 0
             self._output_finished.clear()

@@ -61,7 +61,7 @@ O cursor de reprodução mede amostras enviadas ao dispositivo. A posição visu
 
 Um `pyproject.toml` declarará Python, NumPy, SoundFile, SoundDevice e Pygame, além do comando `vmmc`. O README descreverá os pacotes de sistema `portaudio`, `libsndfile`, `pipewire-pulse`, `wireplumber` e `tk`, criação do ambiente virtual, instalação editável, execução, controles e diagnóstico básico.
 
-Ambientes virtuais e bytecode serão ignorados pelo Git. Arquivos binários já rastreados não serão removidos como parte desta correção para evitar misturar uma limpeza histórica com o conserto funcional.
+Ambientes virtuais e bytecode serão ignorados pelo Git. A verificação revelou que bytecode já rastreado, recompilado entre revisões do Python 3.14, bloqueava importações de forma intermitente; por isso esses artefatos serão removidos do índice sem depender da limpeza dos diretórios locais.
 
 ## Testes
 

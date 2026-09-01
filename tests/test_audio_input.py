@@ -133,6 +133,20 @@ class AudioInputTests(unittest.TestCase):
 
         self.assertAlmostEqual(audio.get_position_seconds(), 4 / self.sample_rate)
 
+    def test_replay_closes_finished_stream_before_replacing_it(self):
+        audio = self.make_audio()
+        audio.play()
+        first_stream = self.streams[0]
+        first_stream.pump(12)
+        while audio.get_next_frame() is not None:
+            pass
+
+        audio.play()
+
+        self.assertEqual(first_stream.close_calls, 1)
+        self.assertEqual(len(self.streams), 2)
+        self.assertEqual(audio.state, audio_input.PlaybackState.PLAYING)
+
     def test_start_failure_is_explicit(self):
         streams = []
 
