@@ -90,6 +90,16 @@ class SystemAudioInput:
         with self._lock:
             if self.state is PlaybackState.PLAYING:
                 return
+            has_previous_session = any(
+                resource is not None
+                for resource in (
+                    self._process,
+                    self._thread,
+                    self._stderr_thread,
+                )
+            )
+        if has_previous_session:
+            self._stop()
 
         monitor = discover_default_monitor(self._command_runner)
         command = [
@@ -200,6 +210,8 @@ class SystemAudioInput:
     def _record_unexpected_exit(self, process) -> None:
         returncode = process.poll()
         self._stderr_finished.wait(timeout=0.05)
+        if returncode is None:
+            returncode = process.poll()
         with self._lock:
             detail = bytes(self._stderr_tail).decode(
                 "utf-8", errors="replace"

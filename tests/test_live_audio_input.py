@@ -413,5 +413,56 @@ class SystemAudioLifecycleTests(unittest.TestCase):
                 if process.returncode is None:
                     process.terminate()
 
+    def test_retry_after_background_failure_reaps_previous_process(self):
+        processes = [FakeProcess(), FakeProcess()]
+        process_iterator = iter(processes)
+
+        def command_runner(command, **kwargs):
+            del kwargs
+            if command[1:] == ["get-default-sink"]:
+                return Result("main\n")
+            return Result("1\tmain.monitor\tmodule\n")
+
+        audio = SystemAudioInput(
+            command_runner=command_runner,
+            process_factory=lambda command, **kwargs: next(process_iterator),
+        )
+        self.addCleanup(audio.stop)
+
+        audio.play()
+        processes[0].returncode = 4
+        processes[0].stdout.feed(b"")
+        self.assertTrue(wait_until(lambda: audio.state is PlaybackState.FAILED))
+
+        audio.play()
+
+        self.assertEqual(processes[0].terminate_calls, 1)
+        self.assertEqual(processes[0].wait_calls, 1)
+        self.assertEqual(audio.state, PlaybackState.PLAYING)
+
+    def test_exit_code_is_repolled_after_bounded_diagnostic_wait(self):
+        class LateExitProcess(FakeProcess):
+            def __init__(self):
+                super().__init__()
+                self.poll_calls = 0
+
+            def poll(self):
+                self.poll_calls += 1
+                return None if self.poll_calls == 1 else 11
+
+        process = LateExitProcess()
+        audio = SystemAudioInput(
+            command_runner=self.runner(),
+            process_factory=lambda command, **kwargs: process,
+        )
+        self.addCleanup(audio.stop)
+
+        audio.play()
+        process.stdout.feed(b"")
+        self.assertTrue(wait_until(lambda: audio.state is PlaybackState.FAILED))
+
+        with self.assertRaisesRegex(AudioPlaybackError, "código 11"):
+            audio.get_next_frame()
+
 if __name__ == "__main__":
     unittest.main()
