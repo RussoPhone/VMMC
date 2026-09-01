@@ -95,12 +95,25 @@ class SystemAudioInput:
             "1",
             "--raw",
         ]
-        process = self._process_factory(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=0,
-        )
+        try:
+            process = self._process_factory(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=0,
+            )
+        except FileNotFoundError as exc:
+            message = "parec não está instalado ou não está no PATH"
+            with self._lock:
+                self.state = PlaybackState.FAILED
+                self.error_message = message
+            raise AudioPlaybackError(message) from exc
+        except Exception as exc:
+            message = f"Falha ao iniciar a captura do áudio do sistema: {exc}"
+            with self._lock:
+                self.state = PlaybackState.FAILED
+                self.error_message = message
+            raise AudioPlaybackError(message) from exc
         with self._lock:
             self._process = process
             self._pending_samples = np.empty(0, dtype=np.float32)
@@ -115,22 +128,44 @@ class SystemAudioInput:
 
     def _capture_loop(self) -> None:
         remainder = b""
-        while not self._stop_event.is_set():
-            process = self._process
-            chunk = process.stdout.read(4096)
-            if not chunk:
-                break
-            payload = remainder + chunk
-            complete_bytes = len(payload) - (len(payload) % 4)
-            remainder = payload[complete_bytes:]
-            if complete_bytes == 0:
-                continue
-            samples = np.frombuffer(payload[:complete_bytes], dtype="<f4").copy()
-            with self._lock:
-                self._pending_samples = np.concatenate(
-                    (self._pending_samples, samples)
-                )
-                self._captured_samples += len(samples)
+        process = self._process
+        try:
+            while not self._stop_event.is_set():
+                chunk = process.stdout.read(4096)
+                if not chunk:
+                    if not self._stop_event.is_set():
+                        self._record_unexpected_exit(process)
+                    break
+                payload = remainder + chunk
+                complete_bytes = len(payload) - (len(payload) % 4)
+                remainder = payload[complete_bytes:]
+                if complete_bytes == 0:
+                    continue
+                samples = np.frombuffer(payload[:complete_bytes], dtype="<f4").copy()
+                with self._lock:
+                    self._pending_samples = np.concatenate(
+                        (self._pending_samples, samples)
+                    )
+                    self._captured_samples += len(samples)
+        except Exception as exc:
+            if not self._stop_event.is_set():
+                with self._lock:
+                    self.error_message = f"Falha durante a captura de áudio: {exc}"
+                    self.state = PlaybackState.FAILED
+
+    def _record_unexpected_exit(self, process) -> None:
+        returncode = process.poll()
+        detail = process.stderr.read(4096)
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", errors="replace")
+        detail = detail.strip()
+        code_label = returncode if returncode is not None else "desconhecido"
+        message = f"Captura de áudio encerrada inesperadamente (código {code_label})"
+        if detail:
+            message += f": {detail}"
+        with self._lock:
+            self.error_message = message
+            self.state = PlaybackState.FAILED
 
     def get_position_seconds(self) -> float:
         with self._lock:
@@ -140,6 +175,10 @@ class SystemAudioInput:
     def get_next_frame(self) -> Optional[AudioFrame]:
         with self._lock:
             if len(self._pending_samples) < self.frame_size:
+                if self.state is PlaybackState.FAILED:
+                    raise AudioPlaybackError(
+                        self.error_message or "Falha desconhecida na captura de áudio"
+                    )
                 return None
             start = self._analysis_cursor
             samples = self._pending_samples[: self.frame_size].copy()
@@ -168,6 +207,10 @@ class SystemAudioInput:
 
         if process is not None:
             process.terminate()
-            process.wait(timeout=1.0)
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1.0)
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=1.0)

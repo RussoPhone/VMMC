@@ -1,5 +1,7 @@
 import io
 import queue
+import subprocess
+import threading
 import time
 import unittest
 
@@ -206,6 +208,109 @@ class SystemAudioInputTests(unittest.TestCase):
         np.testing.assert_array_equal(
             np.concatenate([frame.samples for frame in frames]), samples
         )
+
+
+class SystemAudioLifecycleTests(unittest.TestCase):
+    def runner(self):
+        return RecordingRunner(
+            [Result("main\n"), Result("1\tmain.monitor\tmodule\n")]
+        )
+
+    def test_missing_parec_is_an_explicit_start_failure(self):
+        def missing_parec(command, **kwargs):
+            del command, kwargs
+            raise FileNotFoundError("parec")
+
+        audio = SystemAudioInput(
+            command_runner=self.runner(), process_factory=missing_parec
+        )
+
+        with self.assertRaisesRegex(AudioPlaybackError, "parec"):
+            audio.play()
+
+        self.assertEqual(audio.state, PlaybackState.FAILED)
+        self.assertIn("parec", audio.error_message)
+
+    def test_unexpected_capture_exit_is_reported_after_buffered_frames(self):
+        process = FakeProcess()
+        process.stderr = io.BytesIO(b"backend disconnected")
+        audio = SystemAudioInput(
+            frame_duration=1.0 / 3.0,
+            samplerate=12,
+            command_runner=self.runner(),
+            process_factory=lambda command, **kwargs: process,
+        )
+        self.addCleanup(audio.stop)
+        samples = np.arange(4, dtype=np.float32)
+
+        audio.play()
+        process.stdout.feed(samples.astype("<f4").tobytes())
+        self.assertTrue(wait_until(lambda: audio.get_position_seconds() == 4 / 12))
+        process.returncode = 7
+        process.stdout.feed(b"")
+        self.assertTrue(wait_until(lambda: audio.state is PlaybackState.FAILED))
+
+        np.testing.assert_array_equal(audio.get_next_frame().samples, samples)
+        with self.assertRaisesRegex(AudioPlaybackError, "código 7"):
+            audio.get_next_frame()
+
+    def test_play_and_stop_are_idempotent(self):
+        process = FakeProcess()
+        process_calls = []
+
+        def process_factory(command, **kwargs):
+            process_calls.append((command, kwargs))
+            return process
+
+        audio = SystemAudioInput(
+            command_runner=self.runner(), process_factory=process_factory
+        )
+
+        audio.play()
+        audio.play()
+        audio.stop()
+        audio.stop()
+
+        self.assertEqual(len(process_calls), 1)
+        self.assertEqual(process.terminate_calls, 1)
+        self.assertEqual(process.wait_calls, 1)
+        self.assertEqual(audio.state, PlaybackState.STOPPED)
+
+    def test_stop_does_not_deadlock_while_capture_is_blocked(self):
+        process = FakeProcess()
+        audio = SystemAudioInput(
+            command_runner=self.runner(),
+            process_factory=lambda command, **kwargs: process,
+        )
+        audio.play()
+
+        worker = threading.Thread(target=audio.stop, daemon=True)
+        worker.start()
+        worker.join(0.5)
+
+        self.assertFalse(worker.is_alive(), "stop ficou bloqueado no lock")
+        self.assertEqual(audio.state, PlaybackState.STOPPED)
+
+    def test_stop_kills_capture_process_that_ignores_terminate(self):
+        class HangingProcess(FakeProcess):
+            def wait(self, timeout=None):
+                self.wait_calls += 1
+                if self.kill_calls == 0:
+                    raise subprocess.TimeoutExpired("parec", timeout)
+                return self.returncode
+
+        process = HangingProcess()
+        audio = SystemAudioInput(
+            command_runner=self.runner(),
+            process_factory=lambda command, **kwargs: process,
+        )
+        audio.play()
+
+        audio.stop()
+
+        self.assertEqual(process.terminate_calls, 1)
+        self.assertEqual(process.kill_calls, 1)
+        self.assertEqual(process.wait_calls, 2)
 
 if __name__ == "__main__":
     unittest.main()
