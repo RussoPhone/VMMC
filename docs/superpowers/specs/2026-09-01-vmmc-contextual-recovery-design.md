@@ -1,74 +1,57 @@
-# Recuperação contextual do VMMC
+# Estabilização do VMMC
 
 ## Objetivo
 
-Entregar um protótipo Linux simples em que uma única forma represente o áudio atual, o histórico musical e seu próprio estado visual anterior. Dois instantes acusticamente semelhantes devem poder gerar respostas diferentes quando seus históricos forem diferentes.
+Deixar o protótipo simples, executável no Linux e suficiente para demonstrar sua hipótese: a mesma energia atual pode produzir uma forma diferente quando o histórico musical é diferente.
 
-## Recuperação do repositório
+## Escopo
 
-O conteúdo e o histórico Git de `vmmc/` serão promovidos para a raiz `VMMC/`. O Git externo vazio e os ambientes `.venv/`, `env/`, `v/`, `vmmc/.venv/` e `vmmc/venv/` são redundantes e serão removidos. Um único `.venv` recriável permanecerá ignorado.
+1. Promover o conteúdo e o histórico Git de `vmmc/` para a raiz `VMMC/`.
+2. Remover o Git externo vazio e os ambientes virtuais redundantes; manter somente um `.venv` recriável e ignorado.
+3. Preservar o pipeline atual:
 
-## Arquitetura
+   ```text
+   AudioInput -> AudioAnalyzer -> MusicalMemory -> VisualState -> Geometry -> Renderer
+   ```
 
-```text
-AudioInput -> AudioAnalyzer -> MusicalMemory -> VisualState -> Geometry -> Renderer
+4. Corrigir somente falhas que prejudiquem execução, observabilidade ou o teste contextual.
+5. Remover o arquivo morto `audio/timbre.py` e pequenos resíduos evidentes.
+
+## Comportamento mínimo
+
+- O analyzer continua produzindo amplitude, bandas, fluxo e beat instantâneos.
+- A memória continua pequena. Ela deve ao menos distinguir energia atual, média recente, tendência/contraste e atividade.
+- O estado visual continua suavizado e persistente entre frames.
+- A geometria continua sendo um único blob determinístico com deformação temporal contínua.
+- O renderer recebe apenas vértices e linhas de debug.
+- O `main.py` apenas conduz o pipeline e não perde quadros de áudio acumulados.
+
+Não serão adicionados novos subsistemas, configuração sofisticada ou uma linguagem visual maior.
+
+## Linux e debug
+
+SoundFile/SoundDevice permanecem no áudio e Pygame permanece no desenho. O projeto não dependerá de `pygame.mixer`. Como `pygame.font` está quebrado no Pygame/Python 3.14 atual, o debug deve continuar disponível no terminal sem impedir janela ou som.
+
+O README mostrará o comando inequívoco:
+
+```bash
+.venv/bin/python main.py ~/Videos/Youtube/cidade.wav
 ```
 
-- `audio/input.py`: decodifica, reproduz e entrega quadros mono sequenciais; preserva os canais na saída.
-- `audio/analyzer.py`: produz somente características instantâneas normalizadas.
-- `memory/musical_memory.py`: deriva contexto temporal em escalas curta e média.
-- `state/visual_state.py`: converte contexto em alvos e evolui um estado persistente amortecido.
-- `geometry/`: transforma o estado visual em um blob único, contínuo e determinístico.
-- `renderer/`: desenha vértices e debug; não conhece áudio ou contexto musical.
-- `main.py`: monta o pipeline, encaminha todos os quadros acumulados e gerencia o ciclo de vida.
-
-## Modelo contextual mínimo
-
-`AudioFeatures` manterá amplitude, bandas espectrais, fluxo e onset local. As grandezas serão normalizadas de modo previsível e independente do tamanho do FFT.
-
-`MusicalContext` representará:
-
-- energia atual;
-- média curta;
-- média média;
-- tendência curta;
-- contraste entre o instante e o passado recente;
-- atividade suavizada;
-- persistência de intensidade;
-- tensão derivada dessas relações.
-
-A memória será dirigida por timestamps dos quadros, não pela taxa de renderização.
-
-## Estado e geometria
-
-O estado visual conterá escala, deformação, agitação, suavidade e rotação. Cada parâmetro terá alvo contextual, velocidade e amortecimento simples. O contexto não produzirá vértices diretamente.
-
-A geometria partirá de um círculo radial fixo. Harmônicos com fase temporal contínua deformarão a mesma entidade; não haverá aleatoriedade independente por frame.
-
-## Linux e renderização
-
-SoundFile e SoundDevice permanecem responsáveis por decodificação e saída. Pygame permanece apenas para display, eventos e desenho. O renderer não dependerá de `pygame.mixer` e tolerará a indisponibilidade de `pygame.font` no Python 3.14 usando debug no terminal.
-
-Caminhos inexistentes produzirão mensagens explícitas. A documentação usará caminhos Linux corretos e o interpretador do ambiente virtual.
-
-## Observabilidade
-
-O HUD ou terminal mostrará features instantâneas, médias contextuais, tendência, contraste, atividade, persistência, tensão e estado visual. A saída terminal será limitada para não inundar o console.
+Caminhos Linux são sensíveis a maiúsculas e minúsculas.
 
 ## Validação
 
-Os testes devem comprovar:
+Testes pequenos devem confirmar:
 
-1. analyzer finito, normalizado e coerente para silêncio e tons sintéticos;
-2. mesma energia atual produz contextos diferentes após históricos calmo e intenso;
-3. `VisualState` persiste e converge sem saltos;
-4. backlog de áudio atualiza memória e estado em ordem;
-5. geometria é contínua e recupera sua referência;
-6. renderer não importa nem recebe conceitos musicais;
-7. reprodução, empacotamento, compilação e testes funcionam no Linux.
+1. analyzer retorna valores finitos entre `0.0` e `1.0` para entradas básicas;
+2. históricos calmo e intenso, seguidos pela mesma feature instantânea, geram contextos diferentes;
+3. esses contextos geram estados visuais diferentes e contínuos;
+4. renderer permanece desacoplado de conceitos musicais;
+5. testes existentes, compilação e instalação continuam funcionando.
 
-Um smoke test manual com `cidade.wav` confirmará janela, som e HUD no dispositivo real.
+Um smoke test curto com `cidade.wav` confirma som e janela no dispositivo real.
 
 ## Fora de escopo
 
-Microfone, IA, reconhecimento semântico, partículas, plugins, banco de dados, configuração complexa e troca arbitrária de renderer.
+Reempacotamento em `src/`, reescrita do analyzer, memória multiescala completa, novas dinâmicas físicas, troca de renderer, microfone, IA, partículas, plugins e interface complexa.
