@@ -59,25 +59,34 @@ class MainAudioIntegrationTests(unittest.TestCase):
 
     def test_hud_uses_public_playback_state(self):
         audio = FakeAudioInput(state=PlaybackState.PLAYING)
-        visual_state = SimpleNamespace(
-            scale=1.0,
-            deformation=0.0,
-            agitation=0.0,
-            smoothness=1.0,
+        morphology = SimpleNamespace(
+            wave=0.5,
+            mass=0.5,
+            shard=0.0,
+            noise=0.0,
+            roughness=0.0,
+            elasticity=0.5,
+            fluidity=0.5,
+            symmetry=1.0,
+            hue=0.5,
+            saturation=0.5,
+            brightness=0.5,
+            color_stability=1.0,
         )
 
         try:
             lines = main._build_debug_lines(
                 None,
                 None,
-                visual_state,
+                None,
+                morphology,
                 "/tmp/song.wav",
                 audio,
             )
         except AttributeError as exc:
             self.fail(f"HUD acessou estado privado do backend: {exc}")
 
-        self.assertIn("Audio: REPRODUZINDO", lines)
+        self.assertIn("Audio: REPRODUZINDO", "\n".join(lines))
 
     def test_reset_pipeline_stops_previous_audio(self):
         previous = Mock()

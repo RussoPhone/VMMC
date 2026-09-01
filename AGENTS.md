@@ -11,7 +11,9 @@ memória temporal
         ↓
 contexto musical
         ↓
-estado visual persistente
+gestos expressivos relacionados
+        ↓
+morfologia persistente
         ↓
 geometria
 ```
@@ -23,9 +25,10 @@ O contexto anterior e o estado anterior da forma devem influenciar a resposta ao
 - `audio/input.py` decodifica, reproduz e entrega quadros mono sequenciais para análise.
 - `audio/analyzer.py` calcula características instantâneas sem manter contexto musical longo.
 - `memory/musical_memory.py` transforma características em contexto temporal.
-- `state/visual_state.py` mantém continuidade e suaviza transições visuais.
-- `geometry/` transforma estado visual em vértices.
-- `renderer/` apresenta os vértices e trata apenas assuntos de janela/desenho.
+- `expression/gesture_engine.py` interpreta relações contextuais como gestos contínuos e coexistentes.
+- `state/morphology.py` mantém o corpo, a cor e os resíduos visuais com continuidade.
+- `geometry/` transforma a morfologia em um `GeometrySnapshot`, incluindo fragmentos temporários relacionados ao corpo.
+- `renderer/` apresenta o snapshot e trata apenas assuntos de janela/desenho.
 - `main.py` coordena o fluxo e não deve acessar atributos privados dos componentes.
 
 ## Invariantes do áudio
@@ -51,7 +54,7 @@ Verificação:
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python -m compileall -q audio geometry memory renderer state main.py
+.venv/bin/python -m compileall -q audio expression geometry memory renderer state main.py
 ```
 
 Para mudanças de comportamento, escreva primeiro um teste que falhe pela razão esperada. Testes de reprodução devem usar o stream determinístico em memória; não devem depender do dispositivo físico.

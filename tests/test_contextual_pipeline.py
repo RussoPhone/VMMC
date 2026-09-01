@@ -5,8 +5,9 @@ import numpy as np
 
 from audio.analyzer import AudioAnalyzer, AudioFeatures
 from audio.input import AudioFrame
+from expression.gesture_engine import GestureEngine
 from memory.musical_memory import MusicalMemory
-from state.visual_state import VisualStateController
+from state.morphology import MorphologyController
 
 
 class ContextualPipelineTests(unittest.TestCase):
@@ -94,7 +95,7 @@ class ContextualPipelineTests(unittest.TestCase):
         self.assertGreater(calm_context.energy_trend, intense_context.energy_trend)
         self.assertGreater(calm_context.tension, intense_context.tension)
 
-    def test_different_histories_create_distinct_continuous_visual_states(self):
+    def test_different_histories_create_distinct_continuous_morphologies(self):
         calm_memory = MusicalMemory()
         intense_memory = MusicalMemory()
         for index in range(90):
@@ -104,20 +105,23 @@ class ContextualPipelineTests(unittest.TestCase):
 
         final = self._features(3.0, amplitude=0.8, spectral_flux=0.2)
         contexts = (calm_memory.update(final), intense_memory.update(final))
-        controllers = (VisualStateController(), VisualStateController())
+        gesture_engines = (GestureEngine(), GestureEngine())
+        controllers = (MorphologyController(), MorphologyController())
 
         for _ in range(30):
-            for controller, context in zip(controllers, contexts):
-                controller.update(context, 1.0 / 30.0)
+            for gesture_engine, controller, context in zip(
+                gesture_engines, controllers, contexts
+            ):
+                gestures = gesture_engine.update(context, 1.0 / 30.0)
+                controller.update(context, gestures, 1.0 / 30.0)
 
         calm_state, intense_state = (controller.state for controller in controllers)
-        self.assertNotAlmostEqual(calm_state.deformation, intense_state.deformation)
+        self.assertNotAlmostEqual(calm_state.compression, intense_state.compression)
 
-        previous_scale = calm_state.scale
-        updated_scale = controllers[0].update(contexts[0], 1.0 / 30.0).scale
-        target_scale = 1.0 + contexts[0].energy * 0.6 + contexts[0].energy_trend * 0.4
-        self.assertGreater(updated_scale, previous_scale)
-        self.assertLess(updated_scale, target_scale)
+        previous_compression = calm_state.compression
+        gestures = gesture_engines[0].update(contexts[0], 1.0 / 30.0)
+        updated = controllers[0].update(contexts[0], gestures, 1.0 / 30.0)
+        self.assertLess(abs(updated.compression - previous_compression), 0.1)
 
     @staticmethod
     def _features(timestamp, amplitude, spectral_flux=0.0):

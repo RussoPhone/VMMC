@@ -1,6 +1,6 @@
 .aider*
 .worktrees/
-.venv/
+.venv
 venv/
 env/
 v/

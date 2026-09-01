@@ -1,7 +1,6 @@
 import colorsys
 import math
 from dataclasses import dataclass
-from typing import List, Tuple
 
 from geometry.snapshot import Fragment, GeometrySnapshot
 
@@ -128,30 +127,3 @@ class GeometryBuilder:
             )
             fragments.append(Fragment(points, color))
         return fragments
-
-
-def deform_shape(shape, visual_state, time_elapsed: float) -> List[Tuple[float, float]]:
-    """Compatibility path for the legacy visual-state pipeline."""
-    deformation_amount = visual_state.deformation
-    agitation = visual_state.agitation
-    smoothness = max(0.05, visual_state.smoothness)
-    scale = visual_state.scale
-    rotation = visual_state.rotation
-    harmonic_mid_weight = deformation_amount * (1.0 - smoothness) * 1.5
-    harmonic_high_weight = agitation * (1.0 - smoothness)
-    vertices = []
-    for angle in shape.base_angles:
-        wobble = (
-            math.sin(angle * 3 + time_elapsed * 1.3) * deformation_amount * 0.25
-            + math.sin(angle * 7 + time_elapsed * 2.7) * harmonic_mid_weight * 0.15
-            + math.sin(angle * 11 + time_elapsed * 4.1) * harmonic_high_weight * 0.10
-        )
-        radius = max(0.15, 1.0 + wobble)
-        rotated_angle = angle + rotation
-        vertices.append(
-            (
-                math.cos(rotated_angle) * radius * scale,
-                math.sin(rotated_angle) * radius * scale,
-            )
-        )
-    return vertices

@@ -2,17 +2,19 @@ import os
 import sys
 import time
 import tkinter as tk
+from dataclasses import dataclass
 from tkinter import filedialog
 
 import pygame
 
 from audio.analyzer import AudioAnalyzer
 from audio.input import AudioInput, AudioPlaybackError, PlaybackState
-from geometry.deformation import deform_shape
+from expression.gesture_engine import GestureEngine
+from geometry.deformation import GeometryBuilder
 from geometry.shape import create_circle_shape
 from memory.musical_memory import MusicalMemory
 from renderer.renderer import Renderer
-from state.visual_state import VisualStateController
+from state.morphology import MorphologyController
 
 
 AUDIO_EXTENSIONS = [
@@ -21,12 +23,18 @@ AUDIO_EXTENSIONS = [
 ]
 
 
+@dataclass(frozen=True)
+class ExpressiveFrame:
+    features: object
+    context: object
+    gestures: object
+    morphology: object
+
+
 def select_audio_file(initial_dir: str = None) -> str | None:
-    """Open the native file dialog and return the selected audio path."""
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-
     try:
         file_path = filedialog.askopenfilename(
             title="Selecionar arquivo de áudio",
@@ -39,7 +47,7 @@ def select_audio_file(initial_dir: str = None) -> str | None:
 
 
 def drain_audio_frames(audio_input, analyzer, memory):
-    """Analyze every audio frame that elapsed since the previous draw."""
+    """Compatibility helper for consumers of the original three-stage pipeline."""
     latest_features = None
     latest_context = None
     while (frame := audio_input.get_next_frame()) is not None:
@@ -48,18 +56,43 @@ def drain_audio_frames(audio_input, analyzer, memory):
     return latest_features, latest_context
 
 
+def drain_expressive_frames(
+    audio_input,
+    analyzer,
+    memory,
+    gesture_engine,
+    morphology_controller,
+    previous_timestamp=None,
+):
+    """Send every elapsed audio frame through every interpretive layer in order."""
+    latest = None
+    last_timestamp = previous_timestamp
+    while (frame := audio_input.get_next_frame()) is not None:
+        features = analyzer.analyze(frame)
+        if last_timestamp is None:
+            dt = 1.0 / 30.0
+        else:
+            dt = max(0.0, min(0.1, features.timestamp - last_timestamp))
+        last_timestamp = features.timestamp
+        context = memory.update(features)
+        gestures = gesture_engine.update(context, dt)
+        morphology = morphology_controller.update(context, gestures, dt)
+        latest = ExpressiveFrame(features, context, gestures, morphology)
+    return latest
+
+
 def reset_pipeline(audio_path: str, previous_audio=None):
-    """Create a fresh pipeline after stopping any previous output stream."""
     if previous_audio is not None:
         previous_audio.stop()
-
     audio_input = AudioInput(audio_path)
     analyzer = AudioAnalyzer()
     memory = MusicalMemory()
-    visual_controller = VisualStateController()
+    gestures = GestureEngine()
+    morphology = MorphologyController()
+    geometry = GeometryBuilder(max_fragments=6)
     shape = create_circle_shape(vertex_count=72)
     audio_input.play()
-    return audio_input, analyzer, memory, visual_controller, shape
+    return audio_input, analyzer, memory, gestures, morphology, geometry, shape
 
 
 def main(audio_path: str = None) -> None:
@@ -68,7 +101,6 @@ def main(audio_path: str = None) -> None:
         if not audio_path:
             print("Nenhum arquivo selecionado. Saindo.")
             return
-
     if not os.path.exists(audio_path):
         print(f"Erro: O arquivo '{audio_path}' não existe.")
         return
@@ -77,12 +109,18 @@ def main(audio_path: str = None) -> None:
     audio_input = None
     try:
         renderer = Renderer()
-        audio_input, analyzer, memory, visual_controller, shape = reset_pipeline(audio_path)
-
-        start_time = time.time()
+        (
+            audio_input,
+            analyzer,
+            memory,
+            gesture_engine,
+            morphology_controller,
+            geometry_builder,
+            shape,
+        ) = reset_pipeline(audio_path)
+        start_time = time.monotonic()
         last_time = start_time
-        latest_features = None
-        latest_context = None
+        latest = None
         running = True
         last_dir = os.path.dirname(audio_path)
 
@@ -92,7 +130,6 @@ def main(audio_path: str = None) -> None:
                 break
             if events is True:
                 events = []
-
             for event in events:
                 if event.type != pygame.KEYDOWN:
                     continue
@@ -106,43 +143,47 @@ def main(audio_path: str = None) -> None:
                             audio_input,
                             analyzer,
                             memory,
-                            visual_controller,
+                            gesture_engine,
+                            morphology_controller,
+                            geometry_builder,
                             shape,
                         ) = reset_pipeline(new_path, audio_input)
                         audio_path = new_path
-                        start_time = time.time()
+                        start_time = time.monotonic()
                         last_time = start_time
-                        latest_features = None
-                        latest_context = None
+                        latest = None
 
-            now = time.time()
-            dt = now - last_time
+            now = time.monotonic()
+            render_dt = max(0.0, min(0.1, now - last_time))
             last_time = now
-
-            new_features, new_context = drain_audio_frames(
+            previous_timestamp = latest.features.timestamp if latest else None
+            new_result = drain_expressive_frames(
                 audio_input,
                 analyzer,
                 memory,
+                gesture_engine,
+                morphology_controller,
+                previous_timestamp,
             )
-            if new_features is not None:
-                latest_features = new_features
-                latest_context = new_context
+            if new_result is not None:
+                latest = new_result
 
-            if latest_context is not None:
-                visual_state = visual_controller.update(latest_context, dt)
-            else:
-                visual_state = visual_controller.state
-
-            vertices = deform_shape(shape, visual_state, now - start_time)
+            morphology = latest.morphology if latest else morphology_controller.state
+            geometry = geometry_builder.build(
+                shape,
+                morphology,
+                now - start_time,
+                render_dt,
+            )
             debug_lines = _build_debug_lines(
-                latest_features,
-                latest_context,
-                visual_state,
+                latest.features if latest else None,
+                latest.context if latest else None,
+                latest.gestures if latest else None,
+                morphology,
                 audio_path,
                 audio_input,
             )
-            renderer.draw(vertices, debug_lines)
-
+            renderer.draw(geometry, debug_lines)
             if audio_input.is_finished():
                 running = False
     except AudioPlaybackError as exc:
@@ -158,36 +199,61 @@ def main(audio_path: str = None) -> None:
             renderer.quit()
 
 
-def _build_debug_lines(features, context, visual_state, current_file, audio_input) -> list:
-    lines = [
-        "VISUALIZADOR DE MUSICA COM MEMORIA CONTEXTUAL",
-        f"Arquivo: {os.path.basename(current_file)}",
-        "Controles: [O] Abrir arquivo | [ESC] Sair",
-    ]
-
+def _build_debug_lines(
+    features,
+    context,
+    gestures,
+    morphology,
+    current_file,
+    audio_input,
+) -> list:
     status_labels = {
         PlaybackState.STOPPED: "PARADO",
         PlaybackState.PLAYING: "REPRODUZINDO",
         PlaybackState.FINISHED: "FINALIZADO",
         PlaybackState.FAILED: "ERRO",
     }
-    lines.append(f"Audio: {status_labels[audio_input.state]}")
-
+    lines = [
+        "VMMC | GEOMETRIA CONTEXTUAL EXPRESSIVA",
+        f"Arquivo: {os.path.basename(current_file)} | Audio: {status_labels[audio_input.state]}",
+        "Controles: [O] Abrir arquivo | [ESC] Sair",
+    ]
     if features:
         lines.append(
-            f"amp={features.amplitude:.2f} bass={features.bass:.2f} "
-            f"mid={features.mid:.2f} treble={features.treble:.2f} "
-            f"flux={features.spectral_flux:.2f} beat={'*' if features.beat else ' '}"
+            "AUDIO "
+            f"energy={features.amplitude:.2f} bass={features.bass:.2f} "
+            f"mid={features.mid:.2f} high={features.treble:.2f} "
+            f"flux={features.spectral_flux:.2f} centroid={features.spectral_centroid:.2f} "
+            f"zcr={features.zero_crossing_rate:.2f} density={features.spectral_density:.2f} "
+            f"onset={'*' if features.beat else ' '}"
         )
     if context:
         lines.append(
-            f"energy={context.energy:.2f} avg={context.energy_average:.2f} "
+            "CONTEXT "
+            f"short={context.short_energy:.2f} medium={context.medium_energy:.2f} "
             f"trend={context.energy_trend:+.2f} activity={context.activity:.2f} "
-            f"tension={context.tension:.2f}"
+            f"novelty={context.novelty:.2f} stability={context.stability:.2f} "
+            f"tension={context.tension:.2f} persistence={context.persistence:.2f}"
+        )
+    if gestures:
+        lines.append(
+            "GESTURES "
+            f"pressure={gestures.pressure:.2f} release={gestures.release:.2f} "
+            f"impact={gestures.impact:.2f} suspension={gestures.suspension:.2f} "
+            f"expansion={gestures.expansion:.2f} rupture={gestures.rupture:.2f}"
         )
     lines.append(
-        f"scale={visual_state.scale:.2f} deform={visual_state.deformation:.2f} "
-        f"agitation={visual_state.agitation:.2f} smooth={visual_state.smoothness:.2f}"
+        "MORPHOLOGY "
+        f"wave={morphology.wave:.2f} mass={morphology.mass:.2f} "
+        f"shard={morphology.shard:.2f} noise={morphology.noise:.2f} "
+        f"rough={morphology.roughness:.2f} elastic={morphology.elasticity:.2f} "
+        f"fluid={morphology.fluidity:.2f} symmetry={morphology.symmetry:.2f}"
+    )
+    lines.append(
+        "COLOR "
+        f"hue={morphology.hue:.2f} saturation={morphology.saturation:.2f} "
+        f"brightness={morphology.brightness:.2f} "
+        f"stability={morphology.color_stability:.2f}"
     )
     return lines
 

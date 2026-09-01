@@ -23,4 +23,4 @@ py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["audio", "geometry", "memory", "renderer", "state"]
+include = ["audio", "expression", "geometry", "memory", "renderer", "state"]

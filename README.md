@@ -3,7 +3,7 @@
 Visualizador de música com memória contextual. Uma única forma geométrica representa a música, mas sua aparência depende tanto do instante atual quanto da trajetória sonora e do estado visual anterior.
 
 ```text
-áudio → características → memória musical → estado visual → geometria
+áudio → características → memória → contexto → gestos → morfologia → geometria
 ```
 
 ## Instalação no Arch Linux
@@ -51,8 +51,9 @@ Controles:
 
 - `audio/`: decodificação, reprodução e características instantâneas;
 - `memory/`: contexto acumulado da música;
-- `state/`: continuidade do estado visual;
-- `geometry/`: forma base e deformação;
+- `expression/`: gestos expressivos relacionados (pressão, impacto, liberação etc.);
+- `state/`: morfologia persistente, cor e resíduos visuais;
+- `geometry/`: corpo principal, deformação contínua e fragmentos temporários;
 - `renderer/`: janela, HUD e desenho;
 - `main.py`: coordenação do pipeline.
 
@@ -66,6 +67,9 @@ Os testes de áudio usam um stream em memória e não precisam tocar som.
 
 Se `pygame.font` não estiver disponível, a janela e o som continuam
 funcionando e os valores de debug são mostrados no terminal.
+
+O HUD expõe cada etapa do pipeline em grupos (`AUDIO`, `CONTEXT`, `GESTURES`,
+`MORPHOLOGY` e `COLOR`) para explicar por que o corpo assumiu seu estado atual.
 
 ## Sem som no Arch Linux
 
