@@ -11,7 +11,7 @@ Visualizador de música com memória contextual. Uma única forma geométrica re
 Instale as bibliotecas de sistema:
 
 ```bash
-sudo pacman -S --needed python python-pip portaudio libsndfile pipewire-pulse wireplumber tk
+sudo pacman -S --needed python python-pip portaudio libsndfile libpulse pipewire-pulse wireplumber tk
 ```
 
 Crie o ambiente e instale o projeto:
@@ -40,6 +40,18 @@ Ou execute sem caminho para usar o seletor de arquivos:
 ```bash
 .venv/bin/vmmc
 ```
+
+Para visualizar em tempo real tudo o que toca na saída padrão do computador
+(Spotify, navegador, jogos ou outros aplicativos), use:
+
+```bash
+.venv/bin/vmmc --system-audio
+```
+
+Esse modo captura o monitor da saída padrão por PipeWire/PulseAudio. Ele não
+reproduz nem retransmite o áudio e permanece ativo mesmo durante silêncio, até
+que a janela seja fechada. Os comandos `pactl` e `parec` são fornecidos pelo
+pacote Arch `libpulse`.
 
 Controles:
 
@@ -82,3 +94,12 @@ pactl get-default-sink
 ```
 
 O programa encerra com uma mensagem clara se não conseguir abrir a saída; ele não continua silenciosamente em modo offline.
+
+Para diagnosticar a captura do áudio do sistema, confirme o sink padrão e seu
+monitor:
+
+```bash
+pactl get-default-sink
+pactl list short sources
+command -v parec
+```

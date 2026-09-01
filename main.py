@@ -9,6 +9,7 @@ import pygame
 
 from audio.analyzer import AudioAnalyzer
 from audio.input import AudioInput, AudioPlaybackError, PlaybackState
+from audio.live_input import SystemAudioInput
 from expression.gesture_engine import GestureEngine
 from geometry.deformation import GeometryBuilder
 from geometry.shape import create_circle_shape
@@ -21,6 +22,7 @@ AUDIO_EXTENSIONS = [
     ("Arquivos de Áudio", "*.wav *.flac *.ogg *.mp3 *.aiff *.aif *.au *.raw *.pcm"),
     ("Todos os arquivos", "*.*"),
 ]
+SYSTEM_AUDIO_FLAG = "--system-audio"
 
 
 @dataclass(frozen=True)
@@ -81,10 +83,22 @@ def drain_expressive_frames(
     return latest
 
 
+def create_audio_input(source: str):
+    if source == SYSTEM_AUDIO_FLAG:
+        return SystemAudioInput()
+    return AudioInput(source)
+
+
+def source_description(source: str) -> str:
+    if source == SYSTEM_AUDIO_FLAG:
+        return "Áudio do sistema"
+    return os.path.basename(source)
+
+
 def reset_pipeline(audio_path: str, previous_audio=None):
     if previous_audio is not None:
         previous_audio.stop()
-    audio_input = AudioInput(audio_path)
+    audio_input = create_audio_input(audio_path)
     analyzer = AudioAnalyzer()
     memory = MusicalMemory()
     gestures = GestureEngine()
@@ -101,7 +115,7 @@ def main(audio_path: str = None) -> None:
         if not audio_path:
             print("Nenhum arquivo selecionado. Saindo.")
             return
-    if not os.path.exists(audio_path):
+    if audio_path != SYSTEM_AUDIO_FLAG and not os.path.exists(audio_path):
         print(f"Erro: O arquivo '{audio_path}' não existe.")
         return
 
@@ -188,10 +202,16 @@ def main(audio_path: str = None) -> None:
                 running = False
     except AudioPlaybackError as exc:
         print(f"[ERRO] {exc}")
-        print(
-            "Verifique o dispositivo padrão com 'pactl info' e "
-            f"'{sys.executable} -m sounddevice'."
-        )
+        if audio_path == SYSTEM_AUDIO_FLAG:
+            print(
+                "Verifique 'pactl get-default-sink', "
+                "'pactl list short sources' e se o comando 'parec' está disponível."
+            )
+        else:
+            print(
+                "Verifique o dispositivo padrão com 'pactl info' e "
+                f"'{sys.executable} -m sounddevice'."
+            )
     finally:
         if audio_input is not None:
             audio_input.stop()
@@ -215,7 +235,7 @@ def _build_debug_lines(
     }
     lines = [
         "VMMC | GEOMETRIA CONTEXTUAL EXPRESSIVA",
-        f"Arquivo: {os.path.basename(current_file)} | Audio: {status_labels[audio_input.state]}",
+        f"Fonte: {source_description(current_file)} | Audio: {status_labels[audio_input.state]}",
         "Controles: [O] Abrir arquivo | [ESC] Sair",
     ]
     if features:

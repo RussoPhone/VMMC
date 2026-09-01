@@ -115,6 +115,101 @@ class MainAudioIntegrationTests(unittest.TestCase):
         renderer.quit.assert_called_once_with()
         self.assertIn("device busy", output.getvalue())
 
+    def test_system_audio_flag_builds_live_input(self):
+        live = Mock()
+        with (
+            patch.object(main, "SystemAudioInput", return_value=live) as live_type,
+            patch.object(main, "AudioInput") as file_type,
+        ):
+            result = main.create_audio_input("--system-audio")
+
+        self.assertIs(result, live)
+        live_type.assert_called_once_with()
+        file_type.assert_not_called()
+
+    def test_local_path_builds_file_input(self):
+        file_input = Mock()
+        with (
+            patch.object(main, "SystemAudioInput") as live_type,
+            patch.object(main, "AudioInput", return_value=file_input) as file_type,
+        ):
+            result = main.create_audio_input("song.wav")
+
+        self.assertIs(result, file_input)
+        file_type.assert_called_once_with("song.wav")
+        live_type.assert_not_called()
+
+    def test_system_audio_source_skips_file_existence_check(self):
+        renderer = Mock()
+        renderer.handle_events.return_value = False
+        audio = Mock()
+        pipeline = (audio, Mock(), Mock(), Mock(), Mock(), Mock(), Mock())
+        with (
+            patch.object(main.os.path, "exists", side_effect=AssertionError("file check")),
+            patch.object(main, "Renderer", return_value=renderer),
+            patch.object(main, "reset_pipeline", return_value=pipeline),
+        ):
+            main.main("--system-audio")
+
+        audio.stop.assert_called_once_with()
+        renderer.quit.assert_called_once_with()
+
+    def test_system_audio_has_source_aware_label(self):
+        self.assertEqual(main.source_description("--system-audio"), "Áudio do sistema")
+
+    def test_live_source_runs_until_escape_instead_of_natural_finish(self):
+        renderer = Mock()
+        renderer.handle_events.return_value = [
+            SimpleNamespace(type=main.pygame.KEYDOWN, key=main.pygame.K_ESCAPE)
+        ]
+        audio = Mock(state=PlaybackState.PLAYING)
+        audio.get_next_frame.return_value = None
+        audio.is_finished.return_value = False
+        morphology = Mock()
+        morphology.state = SimpleNamespace(
+            wave=0.5,
+            mass=0.5,
+            shard=0.0,
+            noise=0.0,
+            roughness=0.0,
+            elasticity=0.5,
+            fluidity=0.5,
+            symmetry=1.0,
+            hue=0.5,
+            saturation=0.5,
+            brightness=0.5,
+            color_stability=1.0,
+        )
+        pipeline = (audio, Mock(), Mock(), Mock(), morphology, Mock(), Mock())
+        with (
+            patch.object(main, "Renderer", return_value=renderer),
+            patch.object(main, "reset_pipeline", return_value=pipeline),
+        ):
+            main.main("--system-audio")
+
+        audio.is_finished.assert_called_once_with()
+        audio.stop.assert_called_once_with()
+        renderer.quit.assert_called_once_with()
+
+    def test_background_capture_failure_is_reported_and_cleans_up(self):
+        renderer = Mock()
+        renderer.handle_events.return_value = []
+        audio = Mock(state=PlaybackState.FAILED)
+        audio.get_next_frame.side_effect = AudioPlaybackError("captura encerrada")
+        pipeline = (audio, Mock(), Mock(), Mock(), Mock(), Mock(), Mock())
+        with (
+            patch.object(main, "Renderer", return_value=renderer),
+            patch.object(main, "reset_pipeline", return_value=pipeline),
+            redirect_stdout(StringIO()) as output,
+        ):
+            main.main("--system-audio")
+
+        self.assertIn("captura encerrada", output.getvalue())
+        self.assertIn("pactl get-default-sink", output.getvalue())
+        self.assertIn("parec", output.getvalue())
+        audio.stop.assert_called_once_with()
+        renderer.quit.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
