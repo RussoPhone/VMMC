@@ -1,15 +1,19 @@
+import sys
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
 import soundfile as sf
 
 import audio.input as audio_input
 
 AudioInput = audio_input.AudioInput
+
+
+class FakeCallbackStop(Exception):
+    pass
 
 
 class FakeOutputStream:
@@ -39,7 +43,7 @@ class FakeOutputStream:
         out = np.full((frames, self.channels), np.nan, dtype=np.float32)
         try:
             self.callback(out, frames, None, None)
-        except sd.CallbackStop:
+        except FakeCallbackStop:
             self.active = False
             self.finished_callback()
         return out
@@ -68,6 +72,7 @@ class AudioInputTests(unittest.TestCase):
                 str(self.audio_path),
                 frame_duration=1.0 / 3.0,
                 stream_factory=self.stream_factory,
+                callback_stop=FakeCallbackStop,
             )
             self.addCleanup(audio.stop)
             return audio
@@ -77,6 +82,7 @@ class AudioInputTests(unittest.TestCase):
     def test_exposes_public_playback_contract(self):
         self.assertTrue(hasattr(audio_input, "AudioPlaybackError"))
         self.assertTrue(hasattr(audio_input, "PlaybackState"))
+        self.assertNotIn("sounddevice", sys.modules)
 
     def test_stereo_callback_and_analysis_frames_are_sequential(self):
         audio = self.make_audio()
@@ -167,7 +173,11 @@ class AudioInputTests(unittest.TestCase):
 
         try:
             with self.assertRaisesRegex(audio_input.AudioPlaybackError, "Falha ao abrir"):
-                AudioInput(str(invalid_path), stream_factory=self.stream_factory)
+                AudioInput(
+                    str(invalid_path),
+                    stream_factory=self.stream_factory,
+                    callback_stop=FakeCallbackStop,
+                )
         except sf.LibsndfileError as exc:
             self.fail(f"erro do decodificador escapou da API pública: {exc}")
 
@@ -184,6 +194,7 @@ class AudioInputTests(unittest.TestCase):
                 str(self.audio_path),
                 frame_duration=1.0 / 3.0,
                 stream_factory=failing_factory,
+                callback_stop=FakeCallbackStop,
             )
         except TypeError as exc:
             self.fail(f"AudioInput ainda não aceita stream_factory: {exc}")
@@ -228,6 +239,7 @@ class AudioInputTests(unittest.TestCase):
             str(self.audio_path),
             frame_duration=1.0 / 3.0,
             stream_factory=factory,
+            callback_stop=FakeCallbackStop,
         )
         audio.play()
 

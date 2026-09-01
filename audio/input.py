@@ -6,7 +6,6 @@ import threading
 from typing import Callable, Optional
 
 import numpy as np
-import sounddevice as sd
 import soundfile as sf
 
 
@@ -37,6 +36,7 @@ class AudioInput:
         file_path: str,
         frame_duration: float = 1.0 / 30.0,
         stream_factory: Optional[Callable[..., object]] = None,
+        callback_stop: Optional[type[Exception]] = None,
     ):
         try:
             playback_samples, samplerate = sf.read(
@@ -58,7 +58,14 @@ class AudioInput:
         self.frame_size = max(1, int(self.samplerate * self.frame_duration))
         self.total_duration = self.total_samples / self.samplerate
 
-        self._stream_factory = stream_factory or sd.OutputStream
+        if stream_factory is None or callback_stop is None:
+            import sounddevice as sd
+
+            stream_factory = stream_factory or sd.OutputStream
+            callback_stop = callback_stop or sd.CallbackStop
+
+        self._stream_factory = stream_factory
+        self._callback_stop = callback_stop
         self._stream = None
         self._playback_cursor = 0
         self._analysis_cursor = 0
@@ -126,7 +133,7 @@ class AudioInput:
                 generation != self._generation
                 or self.state is not PlaybackState.PLAYING
             ):
-                raise sd.CallbackStop()
+                raise self._callback_stop()
             start = self._playback_cursor
 
         end = min(start + frames, self.total_samples)
@@ -138,7 +145,7 @@ class AudioInput:
             self._playback_cursor = end
 
         if end >= self.total_samples:
-            raise sd.CallbackStop()
+            raise self._callback_stop()
 
     def _playback_finished(self, generation) -> None:
         """Record natural completion without closing from the callback thread."""
