@@ -79,7 +79,7 @@ class Renderer:
 
     def draw(
         self,
-        vertices: Sequence[Tuple[float, float]],
+        geometry,
         debug_lines: Optional[List[str]] = None,
         fps_limit: int = 60,
     ) -> None:
@@ -94,14 +94,39 @@ class Renderer:
             self.center, self.radius_px = viewport_for_size(self.width, self.height)
             self.screen.fill((10, 10, 18))
 
-            # Desenha a forma
+            if hasattr(geometry, "body_vertices"):
+                vertices = geometry.body_vertices
+                fill_color = geometry.fill_color
+                outline_color = geometry.outline_color
+                fragments = geometry.fragments
+            else:
+                vertices = geometry
+                fill_color = (90, 200, 255)
+                outline_color = (200, 240, 255)
+                fragments = []
+
             points = [
                 (self.center[0] + x * self.radius_px, self.center[1] + y * self.radius_px)
                 for x, y in vertices
             ]
             if len(points) >= 3:
-                pygame.draw.polygon(self.screen, (90, 200, 255), points, width=0)
-                pygame.draw.polygon(self.screen, (200, 240, 255), points, width=2)
+                pygame.draw.polygon(self.screen, fill_color, points, width=0)
+                pygame.draw.polygon(self.screen, outline_color, points, width=2)
+            for fragment in fragments:
+                fragment_points = [
+                    (
+                        self.center[0] + x * self.radius_px,
+                        self.center[1] + y * self.radius_px,
+                    )
+                    for x, y in fragment.vertices
+                ]
+                if len(fragment_points) >= 3:
+                    pygame.draw.polygon(
+                        self.screen,
+                        fragment.color,
+                        fragment_points,
+                        width=0,
+                    )
 
             # Desenha HUD se font estiver disponivel
             if debug_lines and self.font:

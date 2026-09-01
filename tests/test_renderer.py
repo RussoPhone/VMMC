@@ -8,6 +8,37 @@ import renderer.renderer as renderer_module
 
 
 class RendererResizeTests(unittest.TestCase):
+    def test_draw_uses_snapshot_body_fragment_and_colors(self):
+        renderer = object.__new__(renderer_module.Renderer)
+        renderer.width = 800
+        renderer.height = 800
+        renderer.screen = Mock()
+        renderer.screen.get_size.return_value = (800, 800)
+        renderer.font = None
+        renderer.headless = False
+        renderer.last_debug_lines = []
+        renderer.clock = Mock()
+        snapshot = SimpleNamespace(
+            body_vertices=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
+            fragments=[
+                SimpleNamespace(
+                    vertices=((0.2, 0.2), (0.3, 0.2), (0.2, 0.3)),
+                    color=(220, 120, 80),
+                )
+            ],
+            fill_color=(20, 40, 60),
+            outline_color=(100, 140, 180),
+        )
+
+        with (
+            patch.object(renderer_module.pygame.draw, "polygon") as polygon,
+            patch.object(renderer_module.pygame.display, "flip"),
+        ):
+            renderer.draw(snapshot)
+
+        colors = [call.args[1] for call in polygon.call_args_list]
+        self.assertEqual(colors, [(20, 40, 60), (100, 140, 180), (220, 120, 80)])
+
     def test_initializes_only_display_instead_of_all_pygame_modules(self):
         surface = Mock()
         surface.get_size.return_value = (800, 800)
