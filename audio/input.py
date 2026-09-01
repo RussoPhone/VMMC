@@ -38,11 +38,14 @@ class AudioInput:
         frame_duration: float = 1.0 / 30.0,
         stream_factory: Optional[Callable[..., object]] = None,
     ):
-        playback_samples, samplerate = sf.read(
-            file_path,
-            dtype="float32",
-            always_2d=True,
-        )
+        try:
+            playback_samples, samplerate = sf.read(
+                file_path,
+                dtype="float32",
+                always_2d=True,
+            )
+        except Exception as exc:
+            raise AudioPlaybackError(f"Falha ao abrir o arquivo de áudio: {exc}") from exc
 
         self.file_path = file_path
         self.frame_duration = frame_duration
@@ -59,6 +62,7 @@ class AudioInput:
         self._stream = None
         self._playback_cursor = 0
         self._analysis_cursor = 0
+        self._generation = 0
         self._lock = threading.Lock()
         self._output_finished = threading.Event()
 
@@ -76,6 +80,8 @@ class AudioInput:
         with self._lock:
             self._playback_cursor = 0
             self._analysis_cursor = 0
+            self._generation += 1
+            generation = self._generation
             self._output_finished.clear()
             self.error_message = None
             self.state = PlaybackState.PLAYING
@@ -85,8 +91,14 @@ class AudioInput:
                 samplerate=self.samplerate,
                 channels=self.channels,
                 dtype="float32",
-                callback=self._audio_callback,
-                finished_callback=self._playback_finished,
+                callback=lambda outdata, frames, time_info, status: self._audio_callback(
+                    outdata,
+                    frames,
+                    time_info,
+                    status,
+                    generation,
+                ),
+                finished_callback=lambda: self._playback_finished(generation),
             )
             with self._lock:
                 self._stream = stream
@@ -104,13 +116,16 @@ class AudioInput:
                     pass
             raise AudioPlaybackError(f"Falha ao iniciar a saída de áudio: {exc}") from exc
 
-    def _audio_callback(self, outdata, frames, time_info, status) -> None:
+    def _audio_callback(self, outdata, frames, time_info, status, generation) -> None:
         """Fill one output buffer with the next contiguous source samples."""
         del time_info, status
         outdata.fill(0)
 
         with self._lock:
-            if self.state is not PlaybackState.PLAYING:
+            if (
+                generation != self._generation
+                or self.state is not PlaybackState.PLAYING
+            ):
                 raise sd.CallbackStop()
             start = self._playback_cursor
 
@@ -125,10 +140,12 @@ class AudioInput:
         if end >= self.total_samples:
             raise sd.CallbackStop()
 
-    def _playback_finished(self) -> None:
+    def _playback_finished(self, generation) -> None:
         """Record natural completion without closing from the callback thread."""
-        self._output_finished.set()
         with self._lock:
+            if generation != self._generation:
+                return
+            self._output_finished.set()
             if self.state is PlaybackState.PLAYING:
                 self.state = PlaybackState.FINISHED
 
@@ -187,11 +204,21 @@ class AudioInput:
         if stream is None:
             return
 
+        cleanup_errors = []
         try:
             if getattr(stream, "active", False):
                 stream.stop()
-        finally:
+        except Exception as exc:
+            cleanup_errors.append(f"stop: {exc}")
+
+        try:
             stream.close()
+        except Exception as exc:
+            cleanup_errors.append(f"close: {exc}")
+
+        if cleanup_errors:
+            with self._lock:
+                self.error_message = "Falha ao liberar saída de áudio (" + "; ".join(cleanup_errors) + ")"
 
     def __del__(self):
         if hasattr(self, "_lock"):

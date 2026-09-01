@@ -147,6 +147,30 @@ class AudioInputTests(unittest.TestCase):
         self.assertEqual(len(self.streams), 2)
         self.assertEqual(audio.state, audio_input.PlaybackState.PLAYING)
 
+    def test_late_finished_callback_from_old_stream_does_not_finish_replay(self):
+        audio = self.make_audio()
+        audio.play()
+        first_stream = self.streams[0]
+        first_stream.pump(12)
+        while audio.get_next_frame() is not None:
+            pass
+
+        audio.play()
+        first_stream.finished_callback()
+
+        self.assertEqual(audio.state, audio_input.PlaybackState.PLAYING)
+        self.assertFalse(audio.is_finished())
+
+    def test_decode_failure_is_reported_as_audio_playback_error(self):
+        invalid_path = Path(self.temp_dir.name) / "invalid.wav"
+        invalid_path.write_text("not audio", encoding="utf-8")
+
+        try:
+            with self.assertRaisesRegex(audio_input.AudioPlaybackError, "Falha ao abrir"):
+                AudioInput(str(invalid_path), stream_factory=self.stream_factory)
+        except sf.LibsndfileError as exc:
+            self.fail(f"erro do decodificador escapou da API pública: {exc}")
+
     def test_start_failure_is_explicit(self):
         streams = []
 
@@ -182,6 +206,41 @@ class AudioInputTests(unittest.TestCase):
         self.assertEqual(audio.state, audio_input.PlaybackState.STOPPED)
         self.assertEqual(stream.stop_calls, 1)
         self.assertEqual(stream.close_calls, 1)
+
+    def test_stop_attempts_close_when_backend_stop_fails(self):
+        class FailingCleanupStream(FakeOutputStream):
+            def stop(self):
+                self.stop_calls += 1
+                raise RuntimeError("stop failed")
+
+            def close(self):
+                self.close_calls += 1
+                raise RuntimeError("close failed")
+
+        streams = []
+
+        def factory(**kwargs):
+            stream = FailingCleanupStream(**kwargs)
+            streams.append(stream)
+            return stream
+
+        audio = AudioInput(
+            str(self.audio_path),
+            frame_duration=1.0 / 3.0,
+            stream_factory=factory,
+        )
+        audio.play()
+
+        try:
+            audio.stop()
+        except RuntimeError as exc:
+            self.fail(f"falha de limpeza escapou de stop(): {exc}")
+
+        self.assertEqual(streams[0].stop_calls, 1)
+        self.assertEqual(streams[0].close_calls, 1)
+        self.assertEqual(audio.state, audio_input.PlaybackState.STOPPED)
+        self.assertIn("stop failed", audio.error_message)
+        self.assertIn("close failed", audio.error_message)
 
 
 if __name__ == "__main__":

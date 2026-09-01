@@ -147,7 +147,10 @@ def main(audio_path: str = None) -> None:
                 running = False
     except AudioPlaybackError as exc:
         print(f"[ERRO] {exc}")
-        print("Verifique o dispositivo padrão com 'pactl info' e 'python -m sounddevice'.")
+        print(
+            "Verifique o dispositivo padrão com 'pactl info' e "
+            f"'{sys.executable} -m sounddevice'."
+        )
     finally:
         if audio_input is not None:
             audio_input.stop()
