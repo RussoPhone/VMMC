@@ -312,5 +312,103 @@ class SystemAudioLifecycleTests(unittest.TestCase):
         self.assertEqual(process.kill_calls, 1)
         self.assertEqual(process.wait_calls, 2)
 
+    def test_thread_start_failure_cleans_up_capture_process(self):
+        class FailingThread:
+            def start(self):
+                raise RuntimeError("thread unavailable")
+
+        process = FakeProcess()
+        audio = SystemAudioInput(
+            command_runner=self.runner(),
+            process_factory=lambda command, **kwargs: process,
+            thread_factory=lambda **kwargs: FailingThread(),
+        )
+
+        with self.assertRaisesRegex(AudioPlaybackError, "thread unavailable"):
+            audio.play()
+
+        self.assertEqual(audio.state, PlaybackState.FAILED)
+        self.assertIn("thread unavailable", audio.error_message)
+        self.assertEqual(process.terminate_calls, 1)
+        self.assertEqual(process.wait_calls, 1)
+
+    def test_unexpected_eof_does_not_block_reading_stderr(self):
+        class BlockingStderr:
+            def __init__(self):
+                self.read_called = threading.Event()
+                self.release = threading.Event()
+
+            def read(self, size):
+                del size
+                self.read_called.set()
+                self.release.wait(1.0)
+                return b"late detail"
+
+        process = FakeProcess()
+        process.stderr = BlockingStderr()
+        process.returncode = 9
+        audio = SystemAudioInput(
+            command_runner=self.runner(),
+            process_factory=lambda command, **kwargs: process,
+        )
+        try:
+            audio.play()
+            process.stdout.feed(b"")
+
+            self.assertTrue(
+                wait_until(lambda: audio.state is PlaybackState.FAILED, timeout=0.1),
+                "EOF did not become an explicit failure promptly",
+            )
+            self.assertFalse(process.stderr.read_called.is_set())
+        finally:
+            process.stderr.release.set()
+            audio.stop()
+
+    def test_concurrent_play_calls_create_only_one_capture_process(self):
+        processes = []
+        start_barrier = threading.Barrier(3)
+
+        def command_runner(command, **kwargs):
+            del kwargs
+            if command[1:] == ["get-default-sink"]:
+                return Result("main\n")
+            return Result("1\tmain.monitor\tmodule\n")
+
+        def process_factory(command, **kwargs):
+            del command, kwargs
+            process = FakeProcess()
+            processes.append(process)
+            time.sleep(0.05)
+            return process
+
+        audio = SystemAudioInput(
+            command_runner=command_runner,
+            process_factory=process_factory,
+        )
+        errors = []
+
+        def start_audio():
+            start_barrier.wait()
+            try:
+                audio.play()
+            except Exception as exc:
+                errors.append(exc)
+
+        workers = [threading.Thread(target=start_audio) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        start_barrier.wait()
+        for worker in workers:
+            worker.join(0.5)
+
+        try:
+            self.assertEqual(errors, [])
+            self.assertEqual(len(processes), 1)
+        finally:
+            audio.stop()
+            for process in processes:
+                if process.returncode is None:
+                    process.terminate()
+
 if __name__ == "__main__":
     unittest.main()
