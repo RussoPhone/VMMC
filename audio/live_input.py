@@ -72,7 +72,9 @@ class SystemAudioInput:
         self._thread_factory = thread_factory
         self._process = None
         self._thread = None
+        self._stderr_thread = None
         self._stop_event = threading.Event()
+        self._stderr_finished = threading.Event()
         self._lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
         self._sample_chunks = deque()
@@ -106,7 +108,7 @@ class SystemAudioInput:
             process = self._process_factory(
                 command,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 bufsize=0,
             )
         except FileNotFoundError as exc:
@@ -122,6 +124,7 @@ class SystemAudioInput:
                 self.error_message = message
             raise AudioPlaybackError(message) from exc
         thread = None
+        stderr_thread = None
         try:
             with self._lock:
                 self._process = process
@@ -130,10 +133,17 @@ class SystemAudioInput:
                 self._captured_samples = 0
                 self._analysis_cursor = 0
                 self._stop_event.clear()
+                self._stderr_finished.clear()
+                self._stderr_tail = bytearray()
                 self.error_message = None
                 self.state = PlaybackState.PLAYING
                 thread = self._thread_factory(target=self._capture_loop, daemon=True)
+                stderr_thread = self._thread_factory(
+                    target=self._stderr_loop, daemon=True
+                )
                 self._thread = thread
+                self._stderr_thread = stderr_thread
+            stderr_thread.start()
             thread.start()
         except Exception as exc:
             message = f"Falha ao iniciar a captura do áudio do sistema: {exc}"
@@ -141,9 +151,10 @@ class SystemAudioInput:
                 self._stop_event.set()
                 self._process = None
                 self._thread = None
+                self._stderr_thread = None
                 self.error_message = message
                 self.state = PlaybackState.FAILED
-            self._cleanup_resources(process, thread)
+            self._cleanup_resources(process, thread, stderr_thread)
             raise AudioPlaybackError(message) from exc
 
     def _capture_loop(self) -> None:
@@ -172,15 +183,36 @@ class SystemAudioInput:
                     self.error_message = f"Falha durante a captura de áudio: {exc}"
                     self.state = PlaybackState.FAILED
 
+    def _stderr_loop(self) -> None:
+        process = self._process
+        try:
+            while True:
+                chunk = process.stderr.read(1024)
+                if not chunk:
+                    break
+                with self._lock:
+                    self._stderr_tail.extend(chunk)
+                    if len(self._stderr_tail) > 8192:
+                        del self._stderr_tail[:-8192]
+        finally:
+            self._stderr_finished.set()
+
     def _record_unexpected_exit(self, process) -> None:
         returncode = process.poll()
+        self._stderr_finished.wait(timeout=0.05)
+        with self._lock:
+            detail = bytes(self._stderr_tail).decode(
+                "utf-8", errors="replace"
+            ).strip()
         code_label = returncode if returncode is not None else "desconhecido"
         message = f"Captura de áudio encerrada inesperadamente (código {code_label})"
+        if detail:
+            message += f": {detail}"
         with self._lock:
             self.error_message = message
             self.state = PlaybackState.FAILED
 
-    def _cleanup_resources(self, process, thread) -> list[str]:
+    def _cleanup_resources(self, process, *threads) -> list[str]:
         errors = []
         if process is not None:
             try:
@@ -197,11 +229,6 @@ class SystemAudioInput:
                     errors.append(f"kill: {exc}")
             except Exception as exc:
                 errors.append(f"wait: {exc}")
-        if thread is not None and thread is not threading.current_thread():
-            try:
-                thread.join(timeout=1.0)
-            except Exception as exc:
-                errors.append(f"join: {exc}")
         for stream_name in ("stdout", "stderr"):
             stream = getattr(process, stream_name, None) if process is not None else None
             close = getattr(stream, "close", None)
@@ -210,6 +237,16 @@ class SystemAudioInput:
                     close()
                 except Exception as exc:
                     errors.append(f"close {stream_name}: {exc}")
+        for thread in threads:
+            if thread is None or thread is threading.current_thread():
+                continue
+            try:
+                thread.join(timeout=1.0)
+                is_alive = getattr(thread, "is_alive", lambda: False)
+                if is_alive():
+                    errors.append("join: thread de captura não encerrou")
+            except Exception as exc:
+                errors.append(f"join: {exc}")
         return errors
 
     def get_position_seconds(self) -> float:
@@ -258,13 +295,15 @@ class SystemAudioInput:
         with self._lock:
             process = self._process
             thread = self._thread
+            stderr_thread = self._stderr_thread
             self._process = None
             self._thread = None
+            self._stderr_thread = None
             self._stop_event.set()
             if self.state is not PlaybackState.FAILED:
                 self.state = PlaybackState.STOPPED
 
-        cleanup_errors = self._cleanup_resources(process, thread)
+        cleanup_errors = self._cleanup_resources(process, thread, stderr_thread)
         if cleanup_errors:
             with self._lock:
                 self.error_message = "Falha ao liberar captura de áudio (" + "; ".join(

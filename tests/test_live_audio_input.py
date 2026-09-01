@@ -175,6 +175,7 @@ class SystemAudioInputTests(unittest.TestCase):
                 "--raw",
             ],
         )
+        self.assertIs(self.process_calls[0][1]["stderr"], subprocess.PIPE)
 
     def test_fragmented_pcm_bytes_are_preserved_until_a_frame_is_complete(self):
         audio = self.make_audio()
@@ -251,7 +252,9 @@ class SystemAudioLifecycleTests(unittest.TestCase):
         self.assertTrue(wait_until(lambda: audio.state is PlaybackState.FAILED))
 
         np.testing.assert_array_equal(audio.get_next_frame().samples, samples)
-        with self.assertRaisesRegex(AudioPlaybackError, "código 7"):
+        with self.assertRaisesRegex(
+            AudioPlaybackError, "código 7.*backend disconnected"
+        ):
             audio.get_next_frame()
 
     def test_play_and_stop_are_idempotent(self):
@@ -332,7 +335,7 @@ class SystemAudioLifecycleTests(unittest.TestCase):
         self.assertEqual(process.terminate_calls, 1)
         self.assertEqual(process.wait_calls, 1)
 
-    def test_unexpected_eof_does_not_block_reading_stderr(self):
+    def test_blocked_stderr_reader_does_not_delay_eof_failure(self):
         class BlockingStderr:
             def __init__(self):
                 self.read_called = threading.Event()
@@ -353,13 +356,13 @@ class SystemAudioLifecycleTests(unittest.TestCase):
         )
         try:
             audio.play()
+            self.assertTrue(process.stderr.read_called.wait(0.1))
             process.stdout.feed(b"")
 
             self.assertTrue(
                 wait_until(lambda: audio.state is PlaybackState.FAILED, timeout=0.1),
                 "EOF did not become an explicit failure promptly",
             )
-            self.assertFalse(process.stderr.read_called.is_set())
         finally:
             process.stderr.release.set()
             audio.stop()
