@@ -18,7 +18,7 @@ Crie o ambiente e instale o projeto:
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/python -m pip install -e .
 ```
 
 ## Uso
@@ -27,7 +27,13 @@ Abra diretamente uma música:
 
 ```bash
 .venv/bin/vmmc caminho/para/musica.wav
+# equivalente, útil durante o desenvolvimento:
+.venv/bin/python main.py ~/Videos/Youtube/cidade.wav
 ```
+
+No Linux, nomes de arquivo diferenciam maiúsculas de minúsculas:
+`cidade.wav` e `Cidade.wav` são caminhos diferentes. A abreviação da pasta
+pessoal também precisa da barra: use `~/Videos`, não `~Videos`.
 
 Ou execute sem caminho para usar o seletor de arquivos:
 
@@ -57,6 +63,9 @@ Controles:
 ```
 
 Os testes de áudio usam um stream em memória e não precisam tocar som.
+
+Se `pygame.font` não estiver disponível, a janela e o som continuam
+funcionando e os valores de debug são mostrados no terminal.
 
 ## Sem som no Arch Linux
 

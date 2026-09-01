@@ -7,6 +7,7 @@ Retorna lista de eventos pygame para o main processar atalhos (ex: 'O' abrir arq
 """
 
 from typing import List, Optional, Sequence, Tuple, Union
+import time
 
 import pygame
 
@@ -32,6 +33,8 @@ class Renderer:
         self.font = None
         self.headless = False
         self.last_debug_lines = []
+        self._last_debug_print_time = float("-inf")
+        self._debug_print_interval = 0.25
 
         # Tenta inicializar display
         try:
@@ -81,10 +84,7 @@ class Renderer:
         fps_limit: int = 60,
     ) -> None:
         if self.headless or self.screen is None:
-            # Modo texto: so imprime HUD se mudar (evita spam)
-            if debug_lines and debug_lines != self.last_debug_lines:
-                self._print_debug_text(debug_lines)
-                self.last_debug_lines = debug_lines[:] if debug_lines else []
+            self._maybe_print_debug(debug_lines)
             self.clock.tick(fps_limit)
             return
 
@@ -113,9 +113,8 @@ class Renderer:
                         y_offset += 18
                 except Exception as e:
                     print(f"[AVISO] Erro ao desenhar HUD: {e}")
-            elif debug_lines and debug_lines != self.last_debug_lines:
-                self._print_debug_text(debug_lines)
-                self.last_debug_lines = debug_lines[:]
+            elif debug_lines:
+                self._maybe_print_debug(debug_lines)
 
             pygame.display.flip()
         except Exception as e:
@@ -128,6 +127,18 @@ class Renderer:
         print("\033[2J\033[H", end="")  # limpa tela (ANSI escape)
         for line in debug_lines:
             print(line)
+
+    def _maybe_print_debug(self, debug_lines: Optional[List[str]]) -> None:
+        if not debug_lines or debug_lines == self.last_debug_lines:
+            return
+        now = time.monotonic()
+        last_print = getattr(self, "_last_debug_print_time", float("-inf"))
+        interval = getattr(self, "_debug_print_interval", 0.25)
+        if now - last_print < interval:
+            return
+        self._print_debug_text(debug_lines)
+        self.last_debug_lines = debug_lines[:]
+        self._last_debug_print_time = now
 
     def quit(self) -> None:
         if self.screen is not None:

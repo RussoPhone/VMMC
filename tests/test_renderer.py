@@ -51,6 +51,27 @@ class RendererResizeTests(unittest.TestCase):
 
         renderer._print_debug_text.assert_called_once_with(["energy=0.50"])
 
+    def test_terminal_debug_is_throttled_when_values_change_each_frame(self):
+        renderer = object.__new__(renderer_module.Renderer)
+        renderer.width = 800
+        renderer.height = 800
+        renderer.screen = Mock()
+        renderer.screen.get_size.return_value = (800, 800)
+        renderer.font = None
+        renderer.headless = False
+        renderer.last_debug_lines = []
+        renderer.clock = Mock()
+        renderer._print_debug_text = Mock()
+
+        with (
+            patch.object(renderer_module.pygame.draw, "polygon"),
+            patch.object(renderer_module.pygame.display, "flip"),
+        ):
+            renderer.draw([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)], ["energy=0.50"])
+            renderer.draw([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)], ["energy=0.51"])
+
+        renderer._print_debug_text.assert_called_once()
+
     def test_exposes_viewport_calculation(self):
         self.assertTrue(hasattr(renderer_module, "viewport_for_size"))
 
