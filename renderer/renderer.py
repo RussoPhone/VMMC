@@ -7,7 +7,6 @@ Retorna lista de eventos pygame para o main processar atalhos (ex: 'O' abrir arq
 """
 
 from typing import List, Optional, Sequence, Tuple, Union
-import os
 
 import pygame
 
@@ -36,7 +35,7 @@ class Renderer:
 
         # Tenta inicializar display
         try:
-            pygame.init()
+            pygame.display.init()
             pygame.display.set_caption(title)
             self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
         except Exception as e:
@@ -114,6 +113,9 @@ class Renderer:
                         y_offset += 18
                 except Exception as e:
                     print(f"[AVISO] Erro ao desenhar HUD: {e}")
+            elif debug_lines and debug_lines != self.last_debug_lines:
+                self._print_debug_text(debug_lines)
+                self.last_debug_lines = debug_lines[:]
 
             pygame.display.flip()
         except Exception as e:
