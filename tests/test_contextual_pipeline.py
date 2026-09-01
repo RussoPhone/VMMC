@@ -10,6 +10,44 @@ from state.visual_state import VisualStateController
 
 
 class ContextualPipelineTests(unittest.TestCase):
+    def test_spectral_centroid_distinguishes_low_and_high_tones(self):
+        low = self._analyze_tone(100.0)
+        high = self._analyze_tone(4_000.0)
+
+        self.assertGreater(high.spectral_centroid, low.spectral_centroid + 0.1)
+
+    def test_zero_crossing_rate_distinguishes_noise_from_tone(self):
+        samplerate = 48_000
+        count = 1_600
+        tone = np.sin(2.0 * np.pi * 440.0 * np.arange(count) / samplerate)
+        alternating = np.tile([-0.2, 0.2], count // 2)
+        analyzer = AudioAnalyzer()
+
+        tone_features = analyzer.analyze(AudioFrame(tone, 0.0, samplerate, 0))
+        noise_features = analyzer.analyze(
+            AudioFrame(alternating, 1.0 / 30.0, samplerate, 1)
+        )
+
+        self.assertGreater(
+            noise_features.zero_crossing_rate,
+            tone_features.zero_crossing_rate + 0.5,
+        )
+
+    def test_identical_consecutive_spectra_are_stable(self):
+        samplerate = 48_000
+        count = 1_600
+        samples = np.sin(2.0 * np.pi * 440.0 * np.arange(count) / samplerate)
+        analyzer = AudioAnalyzer()
+        analyzer.analyze(AudioFrame(samples, 0.0, samplerate, 0))
+
+        features = analyzer.analyze(
+            AudioFrame(samples.copy(), 1.0 / 30.0, samplerate, 1)
+        )
+
+        self.assertGreater(features.spectral_stability, 0.95)
+        self.assertGreaterEqual(features.spectral_density, 0.0)
+        self.assertLessEqual(features.spectral_density, 1.0)
+
     def test_analyzer_outputs_are_finite_and_normalized(self):
         samplerate = 48_000
         sample_count = 1_600
@@ -92,6 +130,13 @@ class ContextualPipelineTests(unittest.TestCase):
             spectral_flux=spectral_flux,
             beat=False,
         )
+
+    @staticmethod
+    def _analyze_tone(frequency):
+        samplerate = 48_000
+        count = 1_600
+        samples = np.sin(2.0 * np.pi * frequency * np.arange(count) / samplerate)
+        return AudioAnalyzer().analyze(AudioFrame(samples, 0.0, samplerate, 0))
 
 
 if __name__ == "__main__":

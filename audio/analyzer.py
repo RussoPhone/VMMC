@@ -10,6 +10,10 @@ class AudioFeatures:
     treble: float 
     spectral_flux: float 
     beat: bool 
+    spectral_centroid: float = 0.0
+    zero_crossing_rate: float = 0.0
+    spectral_density: float = 0.0
+    spectral_stability: float = 0.0
 
 class AudioAnalyzer:
     def __init__(
@@ -37,6 +41,10 @@ class AudioAnalyzer:
         bass, mid, treble= self._compute_bands(spectrum, sr, len(samples))
         flux = self._compute_spectral_flux(spectrum)
         beat = self._detect_beat(flux, frame.timestamp)
+        centroid = self._compute_spectral_centroid(spectrum, sr, len(samples))
+        zero_crossing_rate = self._compute_zero_crossing_rate(samples)
+        density = self._compute_spectral_density(spectrum)
+        stability = self._compute_spectral_stability(spectrum)
 
         self._prev_spectrum = spectrum
 
@@ -48,6 +56,10 @@ class AudioAnalyzer:
             treble=treble,
             spectral_flux=flux,
             beat=beat,
+            spectral_centroid=centroid,
+            zero_crossing_rate=zero_crossing_rate,
+            spectral_density=density,
+            spectral_stability=stability,
         )
     def _compute_amplitude(self, samples: np.ndarray) -> float:
         rms = float(np.sqrt(np.mean(samples ** 2) + 1e-12))
@@ -77,6 +89,35 @@ class AudioAnalyzer:
         diff = spectrum - self._prev_spectrum
         flux = float(np.sum(np.maximum(diff, 0.0)))
         return min(1.0, flux * 0.01)
+
+    def _compute_spectral_centroid(self, spectrum, sr, n_samples) -> float:
+        total = float(np.sum(spectrum))
+        if total <= 1e-12:
+            return 0.0
+        freqs = np.fft.rfftfreq(n_samples, d=1.0 / sr)
+        centroid_hz = float(np.sum(freqs * spectrum) / total)
+        return max(0.0, min(1.0, centroid_hz / (sr * 0.5)))
+
+    def _compute_zero_crossing_rate(self, samples: np.ndarray) -> float:
+        if len(samples) < 2:
+            return 0.0
+        crossings = np.count_nonzero(np.signbit(samples[1:]) != np.signbit(samples[:-1]))
+        return float(crossings / (len(samples) - 1))
+
+    def _compute_spectral_density(self, spectrum: np.ndarray) -> float:
+        if len(spectrum) == 0:
+            return 0.0
+        peak = float(np.max(spectrum))
+        if peak <= 1e-12:
+            return 0.0
+        return float(np.count_nonzero(spectrum >= peak * 0.1) / len(spectrum))
+
+    def _compute_spectral_stability(self, spectrum: np.ndarray) -> float:
+        if self._prev_spectrum is None or len(self._prev_spectrum) != len(spectrum):
+            return 0.0
+        distance = float(np.sum(np.abs(spectrum - self._prev_spectrum)))
+        magnitude = float(np.sum(spectrum) + np.sum(self._prev_spectrum) + 1e-12)
+        return max(0.0, min(1.0, 1.0 - distance / magnitude))
 
     def _detect_beat(self, flux: float, timestamp: float) -> bool:
         self._flux_history.append(flux)
