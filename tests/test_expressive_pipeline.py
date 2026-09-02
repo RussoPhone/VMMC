@@ -117,6 +117,11 @@ class ExpressivePipelineTests(unittest.TestCase):
             morphology,
             "/tmp/song.wav",
             audio,
+            SimpleNamespace(
+                organisms=(object(), object()),
+                relations=(SimpleNamespace(fusion=.7, assimilation=.3),),
+                core_cohesion=.4,
+            ),
         )
 
         text = "\n".join(lines)
@@ -126,6 +131,7 @@ class ExpressivePipelineTests(unittest.TestCase):
             "LANDSCAPE",
             "SIGNATURE",
             "REGIME",
+            "ECOSYSTEM",
             "GESTURES",
             "MORPHOLOGY",
             "COLOR",

@@ -231,6 +231,7 @@ def main(audio_path: str = None) -> None:
                 morphology,
                 audio_path,
                 audio_input,
+                latest.ecosystem if latest else None,
             )
             renderer.draw(geometry, debug_lines)
             if audio_input.is_finished():
@@ -261,6 +262,7 @@ def _build_debug_lines(
     morphology,
     current_file,
     audio_input,
+    ecosystem=None,
 ) -> list:
     status_labels = {
         PlaybackState.STOPPED: "PARADO",
@@ -326,6 +328,23 @@ def _build_debug_lines(
             f"pressure={gestures.pressure:.2f} release={gestures.release:.2f} "
             f"impact={gestures.impact:.2f} suspension={gestures.suspension:.2f} "
             f"expansion={gestures.expansion:.2f} rupture={gestures.rupture:.2f}"
+        )
+    if ecosystem:
+        maximum_fusion = max(
+            (relation.fusion for relation in ecosystem.relations),
+            default=0.0,
+        )
+        maximum_assimilation = max(
+            (relation.assimilation for relation in ecosystem.relations),
+            default=0.0,
+        )
+        lines.append(
+            "ECOSYSTEM "
+            f"organisms={len(ecosystem.organisms)} "
+            f"relations={len(ecosystem.relations)} "
+            f"fusion={maximum_fusion:.2f} "
+            f"assimilation={maximum_assimilation:.2f} "
+            f"core={ecosystem.core_cohesion:.2f}"
         )
     lines.append(
         "MORPHOLOGY "
