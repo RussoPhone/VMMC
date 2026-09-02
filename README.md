@@ -1,10 +1,19 @@
 # VMMC
 
-Visualizador de música com memória contextual. Uma única forma geométrica representa a música, mas sua aparência depende tanto do instante atual quanto da trajetória sonora e do estado visual anterior.
+Visualizador de música com memória contextual. O corpo geométrico central pode
+cultivar um ecossistema de organismos sonoros, dissolver-se entre eles e voltar
+a se recompor. Aparência e relações dependem tanto do instante atual quanto da
+trajetória sonora e do estado visual anterior.
 
 ```text
 áudio → características → memória → contexto → gestos → morfologia → geometria
 ```
+
+Eventos breves deixam sementes; persistência ou retorno confirmam uma presença.
+Presenças semelhantes gravitam, fundem-se com núcleos inicialmente distintos e
+se assimilam gradualmente, mas voltam a se separar quando a música diverge.
+Cada linhagem cultiva uma variação própria da linguagem orgânica original do
+VMMC, sem usar uma tabela rígida de instrumento para forma.
 
 O VMMC aprende uma paisagem relativa durante cada música. Assim, uma mudança
 sutil pode ganhar força em uma faixa delicada sem exigir os mesmos valores
