@@ -67,18 +67,29 @@ class EcosystemTests(unittest.TestCase):
             born_radius + .15,
         )
 
-    def test_inactive_presence_returns_and_is_assimilated_by_core(self):
+    def test_inactive_presence_dissolves_without_returning_to_core(self):
         ecosystem = EcosystemController()
         active = self._presence(1, .3)
         for _ in range(40):
             outward = ecosystem.update((active,), .1)
         depleted_core = outward.core_mass
         inactive = PresenceEvidence(**{**vars(active), "active": False})
+        inactive_start = ecosystem.update((inactive,), .1)
+        start_radius = math.hypot(
+            inactive_start.organisms[0].x,
+            inactive_start.organisms[0].y,
+        )
+        observed_radii = [start_radius]
         for _ in range(240):
-            returned = ecosystem.update((inactive,), .1)
+            dissolved = ecosystem.update((inactive,), .1)
+            if dissolved.organisms:
+                observed_radii.append(
+                    math.hypot(dissolved.organisms[0].x, dissolved.organisms[0].y)
+                )
 
-        self.assertEqual(returned.organisms, ())
-        self.assertGreater(returned.core_mass, depleted_core)
+        self.assertEqual(dissolved.organisms, ())
+        self.assertGreater(dissolved.core_mass, depleted_core)
+        self.assertGreaterEqual(min(observed_radii), start_radius - .02)
 
     def test_births_never_create_more_mass_than_the_core_owned(self):
         ecosystem = EcosystemController()

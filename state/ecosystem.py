@@ -102,7 +102,11 @@ class EcosystemController:
             body = self._bodies.get(presence.identifier)
             if body is None:
                 continue
-            body.visibility = presence.visibility
+            body.visibility = (
+                presence.visibility
+                if presence.active
+                else min(body.visibility, presence.visibility)
+            )
             body.prominence = presence.prominence
             body.genome = VisualGenome.derive(presence.identifier, presence.signature)
             body.active = presence.active
@@ -118,7 +122,7 @@ class EcosystemController:
         for left, right in zip(signature_order, signature_order[1:]):
             relation_states.append(self._update_relation(left, right, dt))
 
-        returned = []
+        dissolved = []
         for body in self._bodies.values():
             radius = max(1e-6, math.hypot(body.x, body.y))
             ux, uy = body.x / radius, body.y / radius
@@ -132,23 +136,26 @@ class EcosystemController:
                     body.vx -= ux * (radius - 1.25) * 1.8 * dt
                     body.vy -= uy * (radius - 1.25) * 1.8 * dt
             else:
-                body.vx += (-body.x * 1.35 - body.vx * .9) * dt
-                body.vy += (-body.y * 1.35 - body.vy * .9) * dt
-            damping = 1.0 - (.18 if body.active else .55) * dt
+                # An exhausted presence fades where the music left it.  It does
+                # not crawl back into the core; only its visual mass dissolves.
+                body.visibility *= math.exp(-1.8 * dt)
+                body.mass *= math.exp(-1.35 * dt)
+            damping = 1.0 - (.18 if body.active else 4.0) * dt
             body.vx *= max(0.0, damping)
             body.vy *= max(0.0, damping)
             body.x += body.vx * dt
             body.y += body.vy * dt
-            if not body.active and math.hypot(body.x, body.y) < .2:
-                returned.append(body.identifier)
+            if not body.active and (body.visibility < .015 or body.mass < .002):
+                dissolved.append(body.identifier)
 
-        for identifier in returned:
-            body = self._bodies.pop(identifier)
-            self._core_mass = min(1.0, self._core_mass + body.mass)
+        for identifier in dissolved:
+            self._bodies.pop(identifier)
             self._relations = {
                 key: value for key, value in self._relations.items()
                 if identifier not in key
             }
+
+        self._rebalance_mass()
 
         self._core_cohesion += (global_cohesion - self._core_cohesion) * min(1.0, dt * 0.7)
         organisms = tuple(
