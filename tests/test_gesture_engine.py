@@ -1,7 +1,7 @@
 import unittest
 
 from expression.gesture_engine import GestureEngine
-from memory.musical_memory import MusicalContext
+from memory.musical_memory import MusicalContext, RegimeWeights, SoundSignature
 
 
 class GestureEngineTests(unittest.TestCase):
@@ -92,6 +92,37 @@ class GestureEngineTests(unittest.TestCase):
 
         self.assertGreater(max(impacts[:3]), max(impacts[-3:]))
 
+    def test_crescendo_compresses_and_lifts_before_climax_release(self):
+        engine = GestureEngine()
+        for _ in range(90):
+            building = engine.update(
+                self._context(
+                    energy=.55,
+                    trend=.28,
+                    tension=.85,
+                    persistence=.8,
+                    building=.9,
+                ),
+                1 / 30,
+            )
+
+        self.assertGreater(building.pressure, .55)
+        self.assertGreater(building.lift, .35)
+        climax = engine.update(
+            self._context(
+                energy=.9,
+                tension=.9,
+                persistence=.9,
+                onset=True,
+                climax=.95,
+                attack=.9,
+                noise=.7,
+            ),
+            .1,
+        )
+        self.assertGreater(climax.expansion, .25)
+        self.assertGreater(climax.rupture, .05)
+
     @staticmethod
     def _context(
         energy=0.4,
@@ -108,6 +139,11 @@ class GestureEngineTests(unittest.TestCase):
         centroid=0.3,
         zcr=0.1,
         density=0.3,
+        building=0.0,
+        climax=0.0,
+        release=0.0,
+        attack=0.0,
+        noise=0.0,
     ):
         return MusicalContext(
             energy=energy,
@@ -124,6 +160,8 @@ class GestureEngineTests(unittest.TestCase):
             zero_crossing_rate=zcr,
             spectral_density=density,
             onset=onset,
+            regimes=RegimeWeights(.5, building, 0.0, 0.0, climax, release, 0.0),
+            signature=SoundSignature(centroid, noise, 1-noise, attack, density),
         )
 
 

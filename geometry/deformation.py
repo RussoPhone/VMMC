@@ -76,7 +76,8 @@ class GeometryBuilder:
             vertices.append(
                 (
                     math.cos(rotated) * radius * squeeze,
-                    math.sin(rotated) * radius / max(0.75, squeeze),
+                    math.sin(rotated) * radius / max(0.75, squeeze)
+                    - morphology.lift * .32,
                 )
             )
         return vertices

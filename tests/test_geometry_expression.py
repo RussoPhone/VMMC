@@ -72,6 +72,15 @@ class ExpressiveGeometryTests(unittest.TestCase):
 
         self.assertLess(len(snapshot.fragments), len(burst.fragments))
 
+    def test_crescendo_lift_raises_the_whole_core(self):
+        shape = create_circle_shape(72)
+        resting = GeometryBuilder().build(shape, MorphologyState(lift=0.0), 1.0, 1/60)
+        raised = GeometryBuilder().build(shape, MorphologyState(lift=0.8), 1.0, 1/60)
+
+        resting_y = sum(y for _, y in resting.body_vertices) / len(resting.body_vertices)
+        raised_y = sum(y for _, y in raised.body_vertices) / len(raised.body_vertices)
+        self.assertLess(raised_y, resting_y - .15)
+
 
 if __name__ == "__main__":
     unittest.main()

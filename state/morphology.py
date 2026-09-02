@@ -32,6 +32,7 @@ class MorphologyState:
     color_stability: float = 1.0
     fragmentation: float = 0.0
     residue: float = 0.0
+    lift: float = 0.0
 
 
 class MorphologyController:
@@ -124,6 +125,13 @@ class MorphologyController:
             s.fragmentation, fragmentation_target, 8.0, 0.7, dt
         )
         s.residue = _approach(s.residue, residue_target, 5.0, 0.22, dt)
+        s.lift = _approach(
+            s.lift,
+            getattr(gestures, "lift", 0.0),
+            3.5,
+            2.4,
+            dt,
+        )
 
         s.brightness = _approach(s.brightness, context.energy, 5.0, 1.5, dt)
         s.saturation = _approach(

@@ -332,7 +332,9 @@ def _build_debug_lines(
             "GESTURES "
             f"pressure={gestures.pressure:.2f} release={gestures.release:.2f} "
             f"impact={gestures.impact:.2f} suspension={gestures.suspension:.2f} "
-            f"expansion={gestures.expansion:.2f} rupture={gestures.rupture:.2f}"
+            f"expansion={gestures.expansion:.2f} rupture={gestures.rupture:.2f} "
+            f"crescendo={getattr(gestures, 'crescendo', 0.0):.2f} "
+            f"lift={getattr(gestures, 'lift', 0.0):.2f}"
         )
     if ecosystem:
         maximum_fusion = max(
