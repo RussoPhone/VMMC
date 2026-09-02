@@ -106,6 +106,38 @@ class EcosystemTests(unittest.TestCase):
             {presence.identifier for presence in presences},
         )
 
+    def test_beat_impulses_each_active_form_by_its_visual_identity(self):
+        calm = EcosystemController()
+        driven = EcosystemController()
+        presence = self._presence(4, .7)
+        calm.update((presence,), .1, beat_strength=0.0)
+        driven.update((presence,), .1, beat_strength=0.0)
+
+        calm_state = calm.update((presence,), .1, beat_strength=0.0)
+        driven_state = driven.update((presence,), .1, beat_strength=1.0)
+
+        calm_speed = math.hypot(
+            calm_state.organisms[0].velocity_x,
+            calm_state.organisms[0].velocity_y,
+        )
+        driven_speed = math.hypot(
+            driven_state.organisms[0].velocity_x,
+            driven_state.organisms[0].velocity_y,
+        )
+        self.assertGreater(driven_speed, calm_speed + .02)
+
+    def test_entire_form_stays_inside_normalized_window(self):
+        ecosystem = EcosystemController()
+        presence = self._presence(8, .9)
+
+        state = None
+        for _ in range(600):
+            state = ecosystem.update((presence,), .1, beat_strength=1.0)
+
+        body = state.organisms[0]
+        visual_radius = ecosystem.visual_radius(body)
+        self.assertLessEqual(math.hypot(body.x, body.y) + visual_radius, 1.6)
+
     @staticmethod
     def _presence(identifier, brightness):
         return PresenceEvidence(identifier, SoundSignature(brightness, .2, .8, .3, .5), PresenceStage.CONFIRMED, .9, .7, 2, 3.0, 3.0, True)

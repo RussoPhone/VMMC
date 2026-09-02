@@ -97,6 +97,10 @@ def drain_expressive_frames(
                 dt,
                 global_cohesion=context.regimes.stability,
                 cycle_index=context.cycle_index,
+                beat_strength=max(
+                    1.0 if getattr(features, "beat", False) else 0.0,
+                    getattr(features, "spectral_flux", 0.0),
+                ),
             )
             if ecosystem_controller is not None
             else None

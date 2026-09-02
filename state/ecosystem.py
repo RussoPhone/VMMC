@@ -59,6 +59,8 @@ class _Relation:
 
 
 class EcosystemController:
+    FIELD_RADIUS = 1.6
+
     def __init__(self):
         self._bodies = {}
         self._relations = {}
@@ -67,7 +69,14 @@ class EcosystemController:
         self._core_mass = 1.0
         self._time = 0.0
 
-    def update(self, presences, dt, global_cohesion=0.5, cycle_index=0):
+    def update(
+        self,
+        presences,
+        dt,
+        global_cohesion=0.5,
+        cycle_index=0,
+        beat_strength=0.0,
+    ):
         if cycle_index != self._cycle_index:
             self._cycle_index = cycle_index
             self._bodies.clear()
@@ -76,6 +85,7 @@ class EcosystemController:
             self._core_mass = 1.0
             self._time = 0.0
         dt = max(0.0, min(0.1, dt))
+        beat_strength = max(0.0, min(1.0, beat_strength))
         self._time += dt
         visible = sorted(presences, key=lambda item: item.identifier)
         for presence in visible:
@@ -132,9 +142,16 @@ class EcosystemController:
                 wander = math.sin(self._time * .73 + body.identifier * 1.91) * .09
                 body.vx += (ux * avoid - uy * swirl + math.cos(body.identifier) * wander) * dt
                 body.vy += (uy * avoid + ux * swirl + math.sin(body.identifier) * wander) * dt
-                if radius > 1.25:
-                    body.vx -= ux * (radius - 1.25) * 1.8 * dt
-                    body.vy -= uy * (radius - 1.25) * 1.8 * dt
+                if beat_strength > 0.0:
+                    speed = math.hypot(body.vx, body.vy)
+                    if speed > .01:
+                        beat_x, beat_y = body.vx / speed, body.vy / speed
+                    else:
+                        beat_x, beat_y = ux, uy
+                    identity = .35 + body.genome.elasticity * .4 + body.genome.shard * .25
+                    impulse = beat_strength * identity * dt
+                    body.vx += beat_x * impulse
+                    body.vy += beat_y * impulse
             else:
                 # An exhausted presence fades where the music left it.  It does
                 # not crawl back into the core; only its visual mass dissolves.
@@ -145,6 +162,7 @@ class EcosystemController:
             body.vy *= max(0.0, damping)
             body.x += body.vx * dt
             body.y += body.vy * dt
+            self._contain(body)
             if not body.active and (body.visibility < .015 or body.mass < .002):
                 dissolved.append(body.identifier)
 
@@ -179,6 +197,29 @@ class EcosystemController:
             self._core_mass,
             len(self._bodies),
         )
+
+    @staticmethod
+    def visual_radius(body):
+        genome = body.genome
+        mass_scale = math.sqrt(max(.01, body.mass) / .1)
+        base = (
+            (.13 + genome.mass * .15 + body.prominence * .09)
+            * (.35 + body.visibility * .65)
+            * mass_scale
+        )
+        return base * 2.1
+
+    def _contain(self, body):
+        radius = math.hypot(body.x, body.y)
+        limit = max(.15, self.FIELD_RADIUS - self.visual_radius(body))
+        if radius <= limit:
+            return
+        ux, uy = body.x / max(radius, 1e-9), body.y / max(radius, 1e-9)
+        body.x, body.y = ux * limit, uy * limit
+        outward_speed = body.vx * ux + body.vy * uy
+        if outward_speed > 0.0:
+            body.vx -= ux * outward_speed * 1.65
+            body.vy -= uy * outward_speed * 1.65
 
     def _update_relation(self, left, right, dt):
         key = tuple(sorted((left.identifier, right.identifier)))

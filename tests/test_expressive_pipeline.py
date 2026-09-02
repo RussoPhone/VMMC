@@ -152,11 +152,11 @@ class ExpressivePipelineTests(unittest.TestCase):
         morphology = SimpleNamespace(update=lambda context, value, dt: SimpleNamespace(index=context.index))
         seen = []
         tracker = SimpleNamespace(update=lambda context, timestamp: (context.index,))
-        ecosystem = SimpleNamespace(update=lambda presences, dt, global_cohesion, cycle_index: seen.append(presences) or SimpleNamespace(organisms=presences))
+        ecosystem = SimpleNamespace(update=lambda presences, dt, global_cohesion, cycle_index, beat_strength: seen.append((presences, beat_strength)) or SimpleNamespace(organisms=presences))
 
         result = main.drain_expressive_frames(audio, analyzer, memory, gestures, morphology, presence_tracker=tracker, ecosystem_controller=ecosystem)
 
-        self.assertEqual(seen, [(0,), (1,)])
+        self.assertEqual([item[0] for item in seen], [(0,), (1,)])
         self.assertEqual(result.ecosystem.organisms, (1,))
 
 
