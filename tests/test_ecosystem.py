@@ -20,6 +20,7 @@ class EcosystemTests(unittest.TestCase):
         self.assertGreater(relation.fusion, 0.5)
         self.assertGreater(relation.assimilation, 0.0)
         self.assertLess(relation.assimilation, 1.0)
+        self.assertNotEqual(state.organisms[0].genome.hue, state.organisms[1].genome.hue)
 
     def test_divergence_reopens_distinct_nuclei(self):
         ecosystem = EcosystemController()

@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 import math
 
+from state.visual_genome import VisualGenome
+
 
 @dataclass(frozen=True)
 class OrganismState:
@@ -11,6 +13,7 @@ class OrganismState:
     y: float
     visibility: float
     prominence: float
+    genome: VisualGenome
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,14 @@ class EcosystemController:
 
         self._core_cohesion += (global_cohesion - self._core_cohesion) * min(1.0, dt * 0.7)
         organisms = tuple(
-            OrganismState(item.identifier, self._bodies[item.identifier].x, self._bodies[item.identifier].y, item.visibility, item.prominence)
+            OrganismState(
+                item.identifier,
+                self._bodies[item.identifier].x,
+                self._bodies[item.identifier].y,
+                item.visibility,
+                item.prominence,
+                VisualGenome.derive(item.identifier, item.signature),
+            )
             for item in visible
         )
         return EcosystemState(organisms, tuple(relation_states), self._core_cohesion)
