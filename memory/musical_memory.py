@@ -1,5 +1,6 @@
 from collections import deque
 from dataclasses import dataclass, field
+from enum import Enum
 from statistics import fmean, pstdev
 
 from memory.adaptive_landscape import AdaptiveLandscape, RelativeFeatures
@@ -7,6 +8,12 @@ from memory.adaptive_landscape import AdaptiveLandscape, RelativeFeatures
 
 def _clamp(value, low=0.0, high=1.0):
     return max(low, min(high, value))
+
+
+class CyclePhase(Enum):
+    LISTENING = "listening"
+    QUIETING = "quieting"
+    ENDED = "ended"
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,9 @@ class MusicalContext:
     regimes: "RegimeWeights" = field(
         default_factory=lambda: RegimeWeights(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     )
+    cycle_phase: CyclePhase = CyclePhase.LISTENING
+    cycle_index: int = 0
+    silence_duration: float = 0.0
 
     @property
     def energy_average(self):
@@ -80,12 +90,16 @@ class MusicalMemory:
         medium_window_seconds: float = 12.0,
         activity_smoothing: float = 0.15,
         window_seconds: float | None = None,
+        silence_end_seconds: float = 12.0,
+        absolute_silence_floor: float = 0.01,
     ):
         if window_seconds is not None:
             short_window_seconds = window_seconds
         self.short_window_seconds = short_window_seconds
         self.medium_window_seconds = max(medium_window_seconds, short_window_seconds)
         self.activity_smoothing = activity_smoothing
+        self.silence_end_seconds = silence_end_seconds
+        self.absolute_silence_floor = absolute_silence_floor
         self._history = deque()
         self._smoothed_activity = 0.0
         self._tension = 0.0
@@ -94,8 +108,13 @@ class MusicalMemory:
         self._signature_history = deque(maxlen=360)
         self._previous_prominence = 0.0
         self._regimes = RegimeWeights(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        self._cycle_phase = CyclePhase.LISTENING
+        self._cycle_index = 0
+        self._silence_started_at = None
+        self._silence_duration = 0.0
 
     def update(self, features) -> MusicalContext:
+        self._advance_cycle(features)
         previous_tension = self._tension
         relative = self._landscape.update(features)
         signature = SoundSignature(
@@ -218,7 +237,55 @@ class MusicalMemory:
             signature_continuity=signature_continuity,
             prominence=prominence,
             regimes=self._regimes,
+            cycle_phase=self._cycle_phase,
+            cycle_index=self._cycle_index,
+            silence_duration=self._silence_duration,
         )
+
+    def _advance_cycle(self, features) -> None:
+        contextual_floor = self.absolute_silence_floor
+        if self._landscape.confidence > 0.5:
+            contextual_floor = max(
+                contextual_floor,
+                self._landscape.energy_baseline * 0.08,
+            )
+        amplitude = _clamp(features.amplitude)
+        flux = _clamp(features.spectral_flux)
+        is_active = amplitude > contextual_floor or (
+            flux > 0.05 and amplitude > self.absolute_silence_floor * 0.5
+        )
+
+        if is_active:
+            if self._cycle_phase is CyclePhase.ENDED:
+                self._cycle_index += 1
+                self._reset_cycle_state()
+            self._cycle_phase = CyclePhase.LISTENING
+            self._silence_started_at = None
+            self._silence_duration = 0.0
+            return
+
+        if self._silence_started_at is None:
+            self._silence_started_at = features.timestamp
+        self._silence_duration = max(
+            0.0, features.timestamp - self._silence_started_at
+        )
+        if self._silence_duration >= self.silence_end_seconds:
+            self._cycle_phase = CyclePhase.ENDED
+        else:
+            self._cycle_phase = CyclePhase.QUIETING
+
+    def _reset_cycle_state(self) -> None:
+        self._history.clear()
+        self._smoothed_activity = 0.0
+        self._tension = 0.0
+        self._persistence = 0.0
+        self._landscape.reset()
+        self._signature_history.clear()
+        self._previous_prominence = 0.0
+        self._regimes = RegimeWeights(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        self._cycle_phase = CyclePhase.LISTENING
+        self._silence_started_at = None
+        self._silence_duration = 0.0
 
     def _smooth_regimes(self, targets: RegimeWeights) -> RegimeWeights:
         values = {}

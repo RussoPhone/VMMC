@@ -1,7 +1,7 @@
 import unittest
 
 from audio.analyzer import AudioFeatures
-from memory.musical_memory import MusicalMemory
+from memory.musical_memory import CyclePhase, MusicalMemory
 
 
 class MusicalContextTests(unittest.TestCase):
@@ -252,6 +252,89 @@ class MusicalContextTests(unittest.TestCase):
 
         self.assertGreater(final.regimes.release, first_release.regimes.release)
         self.assertLess(final.regimes.climax, first_release.regimes.climax)
+
+    def test_twelve_seconds_of_silence_end_the_cycle_exactly(self):
+        memory = MusicalMemory()
+        for index in range(90):
+            memory.update(self._features(index / 30.0, energy=0.4, flux=0.1))
+
+        memory.update(self._features(3.0, energy=0.0, flux=0.0))
+        before = memory.update(self._features(14.99, energy=0.0, flux=0.0))
+        boundary = memory.update(self._features(15.0, energy=0.0, flux=0.0))
+
+        self.assertEqual(before.cycle_phase, CyclePhase.QUIETING)
+        self.assertAlmostEqual(before.silence_duration, 11.99, places=2)
+        self.assertEqual(boundary.cycle_phase, CyclePhase.ENDED)
+        self.assertAlmostEqual(boundary.silence_duration, 12.0, places=6)
+
+    def test_low_noise_does_not_restart_silence_timer(self):
+        memory = MusicalMemory()
+        for index in range(90):
+            memory.update(self._features(index / 30.0, energy=0.4, flux=0.1))
+
+        memory.update(self._features(3.0, energy=0.0, flux=0.0))
+        memory.update(self._features(9.0, energy=0.005, flux=0.0))
+        ended = memory.update(self._features(15.0, energy=0.005, flux=0.0))
+
+        self.assertEqual(ended.cycle_phase, CyclePhase.ENDED)
+        self.assertEqual(ended.cycle_index, 0)
+
+    def test_real_sound_after_ended_cycle_starts_fresh_landscape(self):
+        memory = MusicalMemory()
+        for index in range(90):
+            memory.update(
+                self._features(
+                    index / 30.0,
+                    energy=0.4,
+                    centroid=0.2,
+                    harmonicity=0.9,
+                )
+            )
+        memory.update(self._features(3.0, energy=0.0, flux=0.0))
+        memory.update(self._features(15.0, energy=0.0, flux=0.0))
+
+        restarted = memory.update(
+            self._features(
+                15.1,
+                energy=0.5,
+                flux=0.2,
+                centroid=0.8,
+                flatness=0.7,
+            )
+        )
+
+        self.assertEqual(restarted.cycle_phase, CyclePhase.LISTENING)
+        self.assertEqual(restarted.cycle_index, 1)
+        self.assertLess(restarted.relative.confidence, 0.01)
+        self.assertEqual(restarted.signature_continuity, 0.0)
+
+    def test_continuous_timbre_transition_stays_in_same_cycle(self):
+        memory = MusicalMemory()
+        for index in range(120):
+            memory.update(
+                self._features(
+                    index / 30.0,
+                    energy=0.3,
+                    centroid=0.2,
+                    harmonicity=0.9,
+                )
+            )
+
+        transitioned = memory.update(
+            self._features(
+                4.0,
+                energy=0.8,
+                flux=0.9,
+                centroid=0.9,
+                flatness=0.9,
+                harmonicity=0.1,
+                attack=0.8,
+            )
+        )
+
+        self.assertEqual(transitioned.cycle_phase, CyclePhase.LISTENING)
+        self.assertEqual(transitioned.cycle_index, 0)
+        self.assertGreater(transitioned.regimes.transition, 0.2)
 
     @staticmethod
     def _features(

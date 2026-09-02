@@ -67,6 +67,10 @@ class AdaptiveLandscape:
             return 0.0
         return _clamp(statistic.long_mean, 0.0, 1.0)
 
+    @property
+    def confidence(self) -> float:
+        return _clamp(self._sample_count / 180.0, 0.0, 1.0)
+
     def reset(self) -> None:
         self._statistics = {
             name: _RunningStatistic()
@@ -116,7 +120,7 @@ class AdaptiveLandscape:
             brightness=relative_values["brightness"],
             texture=relative_values["texture"],
             activity=relative_values["activity"],
-            confidence=_clamp(self._sample_count / 180.0, 0.0, 1.0),
+            confidence=self.confidence,
         )
 
     def _relative_value(self, statistic: _RunningStatistic, value: float) -> float:
