@@ -3,7 +3,36 @@
 from dataclasses import dataclass
 import math
 
+from expression.vocal_field import VocalField
 from state.visual_genome import VisualGenome
+
+
+def _clamp(value):
+    return max(0.0, min(1.0, value))
+
+
+@dataclass(frozen=True)
+class VocalEffect:
+    influence: float = 0.0
+    fluidity: float = 0.0
+    tension: float = 0.0
+    roughness: float = 0.0
+
+
+@dataclass(frozen=True)
+class VocalEffectSummary:
+    reached_count: int = 0
+    mean_influence: float = 0.0
+    max_influence: float = 0.0
+    mean_fluidity: float = 0.0
+    mean_tension: float = 0.0
+    mean_roughness: float = 0.0
+
+
+@dataclass(frozen=True)
+class CollisionSummary:
+    contact_count: int = 0
+    max_repulsion: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -17,6 +46,7 @@ class OrganismState:
     mass: float = 0.1
     velocity_x: float = 0.0
     velocity_y: float = 0.0
+    vocal_effect: VocalEffect = VocalEffect()
 
 
 @dataclass(frozen=True)
@@ -35,6 +65,8 @@ class EcosystemState:
     core_cohesion: float
     core_mass: float = 1.0
     stored_body_count: int = 0
+    vocal_effect: VocalEffectSummary = VocalEffectSummary()
+    collisions: CollisionSummary = CollisionSummary()
 
 
 @dataclass
@@ -50,6 +82,7 @@ class _Body:
     mass: float = 0.1
     active: bool = True
     desired_mass: float = 0.1
+    vocal_effect: VocalEffect = VocalEffect()
 
 
 @dataclass
@@ -76,6 +109,7 @@ class EcosystemController:
         global_cohesion=0.5,
         cycle_index=0,
         beat_strength=0.0,
+        vocal_field=None,
     ):
         if cycle_index != self._cycle_index:
             self._cycle_index = cycle_index
@@ -86,6 +120,7 @@ class EcosystemController:
             self._time = 0.0
         dt = max(0.0, min(0.1, dt))
         beat_strength = max(0.0, min(1.0, beat_strength))
+        vocal_field = vocal_field or VocalField.silent()
         self._time += dt
         visible = sorted(presences, key=lambda item: item.identifier)
         for presence in visible:
@@ -123,6 +158,7 @@ class EcosystemController:
             body.desired_mass = min(.2, .07 + presence.prominence * .1)
 
         self._rebalance_mass()
+        self._update_vocal_effects(vocal_field, dt)
 
         relation_states = []
         signature_order = sorted(
@@ -142,6 +178,9 @@ class EcosystemController:
                 wander = math.sin(self._time * .73 + body.identifier * 1.91) * .09
                 body.vx += (ux * avoid - uy * swirl + math.cos(body.identifier) * wander) * dt
                 body.vy += (uy * avoid + ux * swirl + math.sin(body.identifier) * wander) * dt
+                effect = body.vocal_effect
+                body.vx += (-ux * effect.fluidity * 0.08 - uy * effect.tension * 0.12) * dt
+                body.vy += (-uy * effect.fluidity * 0.08 + ux * effect.tension * 0.12) * dt
                 if beat_strength > 0.0:
                     speed = math.hypot(body.vx, body.vy)
                     if speed > .01:
@@ -166,6 +205,8 @@ class EcosystemController:
             if not body.active and (body.visibility < .015 or body.mass < .002):
                 dissolved.append(body.identifier)
 
+        collisions = self._resolve_collisions(dt)
+
         for identifier in dissolved:
             self._bodies.pop(identifier)
             self._relations = {
@@ -187,6 +228,7 @@ class EcosystemController:
                 body.mass,
                 body.vx,
                 body.vy,
+                body.vocal_effect,
             )
             for body in sorted(self._bodies.values(), key=lambda item: item.identifier)
         )
@@ -196,7 +238,111 @@ class EcosystemController:
             self._core_cohesion,
             self._core_mass,
             len(self._bodies),
+            self._summarize_vocal_effects(organisms),
+            collisions,
         )
+
+    def _update_vocal_effects(self, vocal_field, dt):
+        ranked = sorted(
+            (body for body in self._bodies.values() if body.active),
+            key=lambda body: (
+                body.visibility * 0.55 + body.prominence * 0.45,
+                -body.identifier,
+            ),
+            reverse=True,
+        )
+        denominator = max(1, len(ranked) - 1)
+        for index, body in enumerate(ranked):
+            position = index / denominator
+            reach = _clamp((vocal_field.radius - position + 0.35) / 0.35)
+            influence = vocal_field.intensity * reach * body.visibility
+            target = VocalEffect(
+                influence,
+                influence * vocal_field.continuity,
+                influence * vocal_field.pressure,
+                influence * vocal_field.roughness,
+            )
+            rate = 8.0 if influence > body.vocal_effect.influence else 2.0
+            amount = min(1.0, dt * rate)
+            body.vocal_effect = VocalEffect(
+                *(
+                    getattr(body.vocal_effect, name)
+                    + (getattr(target, name) - getattr(body.vocal_effect, name))
+                    * amount
+                    for name in vars(target)
+                )
+            )
+        for body in self._bodies.values():
+            if body.active:
+                continue
+            amount = min(1.0, dt * 2.0)
+            body.vocal_effect = VocalEffect(
+                *(value * (1.0 - amount) for value in vars(body.vocal_effect).values())
+            )
+
+    @staticmethod
+    def _summarize_vocal_effects(organisms):
+        effects = [body.vocal_effect for body in organisms]
+        if not effects:
+            return VocalEffectSummary()
+        count = len(effects)
+        return VocalEffectSummary(
+            sum(effect.influence > 0.01 for effect in effects),
+            sum(effect.influence for effect in effects) / count,
+            max(effect.influence for effect in effects),
+            sum(effect.fluidity for effect in effects) / count,
+            sum(effect.tension for effect in effects) / count,
+            sum(effect.roughness for effect in effects) / count,
+        )
+
+    def _resolve_collisions(self, dt):
+        bodies = sorted(self._bodies.values(), key=lambda body: body.identifier)
+        contact_count = 0
+        max_repulsion = 0.0
+        for index, left in enumerate(bodies):
+            if left.visibility <= 0.01:
+                continue
+            for right in bodies[index + 1 :]:
+                if right.visibility <= 0.01:
+                    continue
+                key = (left.identifier, right.identifier)
+                relation = self._relations.get(key, _Relation())
+                collision_factor = (
+                    (1.0 - relation.assimilation) ** 2
+                    * (1.0 - relation.fusion * 0.45)
+                )
+                left_radius = self.visual_radius(left) * 0.58
+                right_radius = self.visual_radius(right) * 0.58
+                minimum = (left_radius + right_radius) * (
+                    0.25 + 0.75 * collision_factor
+                )
+                dx, dy = right.x - left.x, right.y - left.y
+                distance = math.hypot(dx, dy)
+                penetration = minimum - distance
+                if penetration <= 0.0:
+                    continue
+                contact_count += 1
+                if distance < 1e-9:
+                    angle = (left.identifier * 31 + right.identifier * 17) * 0.37
+                    ux, uy = math.cos(angle), math.sin(angle)
+                else:
+                    ux, uy = dx / distance, dy / distance
+                normalized = _clamp(penetration / max(minimum, 1e-9))
+                repulsion = normalized * collision_factor
+                max_repulsion = max(max_repulsion, repulsion)
+                displacement = min(0.04, penetration * 0.5) * collision_factor
+                left.x -= ux * displacement
+                left.y -= uy * displacement
+                right.x += ux * displacement
+                right.y += uy * displacement
+                impulse = repulsion * dt * 0.6
+                left.vx -= ux * impulse
+                left.vy -= uy * impulse
+                right.vx += ux * impulse
+                right.vy += uy * impulse
+                self._contain(left)
+                self._contain(right)
+        return CollisionSummary(contact_count, max_repulsion)
 
     @staticmethod
     def visual_radius(body):
