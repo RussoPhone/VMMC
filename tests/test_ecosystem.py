@@ -90,6 +90,10 @@ class EcosystemTests(unittest.TestCase):
             state.core_mass + sum(body.mass for body in state.organisms),
             1.0 + 1e-9,
         )
+        self.assertEqual(
+            {body.identifier for body in state.organisms},
+            {presence.identifier for presence in presences},
+        )
 
     @staticmethod
     def _presence(identifier, brightness):

@@ -49,6 +49,7 @@ class _Body:
     genome: VisualGenome | None = None
     mass: float = 0.1
     active: bool = True
+    desired_mass: float = 0.1
 
 
 @dataclass
@@ -83,9 +84,7 @@ class EcosystemController:
                     continue
                 angle = presence.identifier * 2.399963229728653
                 desired_mass = min(.2, .07 + presence.prominence * .1)
-                mass = min(desired_mass, max(0.0, self._core_mass - .08))
-                if mass < .02:
-                    continue
+                mass = desired_mass
                 radius = .28 + math.sqrt(max(.05, self._core_mass)) * .18
                 self._bodies[presence.identifier] = _Body(
                     presence.identifier,
@@ -98,8 +97,8 @@ class EcosystemController:
                     VisualGenome.derive(presence.identifier, presence.signature),
                     mass,
                     presence.active,
+                    desired_mass,
                 )
-                self._core_mass -= mass
             body = self._bodies.get(presence.identifier)
             if body is None:
                 continue
@@ -107,6 +106,9 @@ class EcosystemController:
             body.prominence = presence.prominence
             body.genome = VisualGenome.derive(presence.identifier, presence.signature)
             body.active = presence.active
+            body.desired_mass = min(.2, .07 + presence.prominence * .1)
+
+        self._rebalance_mass()
 
         relation_states = []
         signature_order = sorted(
@@ -196,6 +198,19 @@ class EcosystemController:
         assimilation_rate = 0.16 if assimilation_target > relation.assimilation else 0.9
         relation.assimilation += (assimilation_target - relation.assimilation) * min(1.0, assimilation_rate * dt)
         return RelationState(key[0], key[1], affinity, relation.fusion, relation.assimilation)
+
+    def _rebalance_mass(self):
+        inactive_mass = sum(body.mass for body in self._bodies.values() if not body.active)
+        active = [body for body in self._bodies.values() if body.active]
+        desired_total = sum(body.desired_mass for body in active)
+        available = max(0.0, .92 - inactive_mass)
+        scale = min(1.0, available / desired_total) if desired_total else 0.0
+        for body in active:
+            body.mass = body.desired_mass * scale
+        self._core_mass = max(
+            .08,
+            1.0 - inactive_mass - sum(body.mass for body in active),
+        )
 
     @staticmethod
     def _signature_distance(left, right):
