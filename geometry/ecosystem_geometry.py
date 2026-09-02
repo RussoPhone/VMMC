@@ -24,6 +24,7 @@ class ConnectionGeometry:
 class EcosystemGeometrySnapshot:
     organisms: tuple
     connections: tuple
+    fragments: tuple = ()
 
 
 def _rgb(hue, saturation, luminosity):
@@ -38,11 +39,13 @@ class EcosystemGeometryBuilder:
         self.vertex_count = max(12, vertex_count)
 
     def build(self, ecosystem, time_elapsed, core_geometry=None):
-        relations = {
-            identifier: relation
-            for relation in ecosystem.relations
-            for identifier in (relation.left_id, relation.right_id)
-        }
+        fragments = ()
+        relations = {}
+        for relation in ecosystem.relations:
+            for identifier in (relation.left_id, relation.right_id):
+                current = relations.get(identifier)
+                if current is None or relation.assimilation > current.assimilation:
+                    relations[identifier] = relation
         organisms = tuple(
             self._organism(body, relations.get(body.identifier), time_elapsed)
             for body in ecosystem.organisms
@@ -58,13 +61,20 @@ class EcosystemGeometryBuilder:
                 cohesion,
             )
             organisms = (core,) + organisms
+            fragments = tuple(
+                type(fragment)(
+                    tuple((x * cohesion, y * cohesion) for x, y in fragment.vertices),
+                    fragment.color,
+                )
+                for fragment in core_geometry.fragments
+            )
         by_id = {body.identifier: body for body in ecosystem.organisms}
         connections = tuple(
             self._connection(by_id[relation.left_id], by_id[relation.right_id], relation)
             for relation in ecosystem.relations
             if relation.fusion > .05
         )
-        return EcosystemGeometrySnapshot(organisms, connections)
+        return EcosystemGeometrySnapshot(organisms, connections, fragments)
 
     def _organism(self, body, relation, time_elapsed):
         genome = body.genome

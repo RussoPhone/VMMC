@@ -27,12 +27,17 @@ class EcosystemTests(unittest.TestCase):
         similar = (self._presence(1, 0.3), self._presence(2, 0.31))
         for _ in range(120):
             merged = ecosystem.update(similar, 0.1, global_cohesion=0.5)
+        merged_distance = self._distance(merged.organisms[0], merged.organisms[1])
         divergent = (self._presence(1, 0.1), self._presence(2, 0.95))
         for _ in range(60):
             separated = ecosystem.update(divergent, 0.1, global_cohesion=0.2)
 
         self.assertLess(separated.relations[0].fusion, merged.relations[0].fusion)
         self.assertLess(separated.relations[0].assimilation, merged.relations[0].assimilation)
+        self.assertGreater(
+            self._distance(separated.organisms[0], separated.organisms[1]),
+            merged_distance + .1,
+        )
 
     @staticmethod
     def _presence(identifier, brightness):

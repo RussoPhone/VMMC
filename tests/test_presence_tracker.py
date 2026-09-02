@@ -38,6 +38,28 @@ class PresenceTrackerTests(unittest.TestCase):
 
         self.assertEqual(len(presences), 1)
 
+    def test_absence_decay_depends_on_music_time_not_frame_count(self):
+        slow = self._visibility_after_absence(10)
+        fast = self._visibility_after_absence(100)
+
+        self.assertAlmostEqual(slow, fast, places=2)
+
+    def test_unconfirmed_seed_expires_after_prolonged_absence(self):
+        tracker = PresenceTracker()
+        seed = tracker.update(self._context(0.0, brightness=.1))[0]
+        for index in range(1, 301):
+            remaining = tracker.update(self._context(index/30, brightness=.9))
+
+        self.assertNotIn(seed.identifier, {item.identifier for item in remaining})
+
+    def _visibility_after_absence(self, fps):
+        tracker = PresenceTracker()
+        original = tracker.update(self._context(0.0, brightness=.1))[0]
+        result = ()
+        for index in range(1, fps + 1):
+            result = tracker.update(self._context(index/fps, brightness=.9))
+        return next(item.visibility for item in result if item.identifier == original.identifier)
+
     @staticmethod
     def _context(timestamp, brightness=0.4, prominence=0.4):
         return SimpleNamespace(

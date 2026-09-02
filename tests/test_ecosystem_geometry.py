@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from geometry.ecosystem_geometry import EcosystemGeometryBuilder
+from geometry.snapshot import Fragment
 from state.ecosystem import EcosystemState, OrganismState, RelationState
 from state.visual_genome import VisualGenome
 
@@ -36,7 +37,12 @@ class EcosystemGeometryTests(unittest.TestCase):
         self.assertLess(snapshot.organisms[0].outline_alpha, 0.5)
 
     def test_global_body_fades_with_ecosystem_cohesion(self):
-        core = SimpleNamespace(body_vertices=[(-1,0),(0,1),(1,0)], fill_color=(10,20,30), outline_color=(40,50,60))
+        core = SimpleNamespace(
+            body_vertices=[(-1,0),(0,1),(1,0)],
+            fill_color=(10,20,30),
+            outline_color=(40,50,60),
+            fragments=(Fragment(((.1,0),(.2,.1),(0,.1)), (70,80,90)),),
+        )
         coherent = EcosystemState((), (), 1.0)
         dissolved = EcosystemState((), (), 0.0)
 
@@ -44,6 +50,7 @@ class EcosystemGeometryTests(unittest.TestCase):
         hidden = EcosystemGeometryBuilder().build(dissolved, 0.0, core)
 
         self.assertEqual(visible.organisms[0].identifier, 0)
+        self.assertEqual(len(visible.fragments), 1)
         self.assertEqual(hidden.organisms, ())
 
 

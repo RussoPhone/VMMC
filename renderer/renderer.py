@@ -103,7 +103,19 @@ class Renderer:
                     points = self._screen_points(organism.vertices)
                     if len(points) >= 3:
                         pygame.draw.polygon(self.screen, organism.fill_color, points, width=0)
-                        pygame.draw.polygon(self.screen, organism.outline_color, points, width=2)
+                        alpha = max(0.0, min(1.0, organism.outline_alpha))
+                        outline = tuple(
+                            round(fill + (edge - fill) * alpha)
+                            for fill, edge in zip(
+                                organism.fill_color,
+                                organism.outline_color,
+                            )
+                        )
+                        pygame.draw.polygon(self.screen, outline, points, width=2)
+                for fragment in geometry.fragments:
+                    points = self._screen_points(fragment.vertices)
+                    if len(points) >= 3:
+                        pygame.draw.polygon(self.screen, fragment.color, points, width=0)
                 vertices = []
                 fragments = []
                 fill_color = outline_color = (0, 0, 0)

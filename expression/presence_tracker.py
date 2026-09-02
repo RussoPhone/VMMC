@@ -38,6 +38,7 @@ class _TrackedPresence:
     prominence: float
     recurrences: int = 0
     absent_since: float | None = None
+    visibility_updated_at: float = 0.0
 
 
 class PresenceTracker:
@@ -75,6 +76,7 @@ class PresenceTracker:
                 timestamp,
                 0.72 if stage is PresenceStage.EPHEMERAL else 0.18,
                 context.prominence,
+                visibility_updated_at=timestamp,
             )
             self._next_identifier += 1
             self._presences.append(match)
@@ -89,6 +91,7 @@ class PresenceTracker:
             match.prominence += (context.prominence - match.prominence) * 0.25
             target = 0.9 if match.stage is PresenceStage.CONFIRMED else 0.35
             match.visibility += (target - match.visibility) * 0.3
+            match.visibility_updated_at = timestamp
 
         for presence in self._presences:
             if presence is match:
@@ -96,11 +99,25 @@ class PresenceTracker:
             if presence.absent_since is None:
                 presence.absent_since = timestamp
             absence = timestamp - presence.absent_since
-            presence.visibility *= 0.985
+            elapsed = max(0.0, timestamp - presence.visibility_updated_at)
+            presence.visibility *= math.exp(-1.5 * elapsed)
+            presence.visibility_updated_at = timestamp
             if absence > 1.5 and presence.stage is PresenceStage.CONFIRMED:
                 presence.stage = PresenceStage.DORMANT
 
-        return tuple(self._snapshot(item, timestamp) for item in self._presences)
+        self._presences = [
+            presence
+            for presence in self._presences
+            if presence.stage in (PresenceStage.CONFIRMED, PresenceStage.DORMANT)
+            or presence.absent_since is None
+            or timestamp - presence.absent_since <= 5.0
+        ]
+
+        return tuple(
+            self._snapshot(item, timestamp)
+            for item in self._presences
+            if item.visibility > 0.01
+        )
 
     def _nearest(self, signature):
         candidates = [

@@ -71,11 +71,12 @@ class RendererResizeTests(unittest.TestCase):
         geometry = SimpleNamespace(
             connections=(SimpleNamespace(vertices=((0,0),(.2,0),(.2,.1),(0,.1)), color=(30,40,50)),),
             organisms=(SimpleNamespace(vertices=((0,0),(.2,0),(0,.2)), fill_color=(60,70,80), outline_color=(90,100,110), outline_alpha=.5),),
+            fragments=(SimpleNamespace(vertices=((0,0),(.1,0),(0,.1)), color=(120,130,140)),),
         )
         with patch.object(renderer_module.pygame.draw, "polygon") as polygon, patch.object(renderer_module.pygame.display, "flip"):
             renderer.draw(geometry)
 
-        self.assertEqual([call.args[1] for call in polygon.call_args_list], [(30,40,50),(60,70,80),(90,100,110)])
+        self.assertEqual([call.args[1] for call in polygon.call_args_list], [(30,40,50),(60,70,80),(75,85,95),(120,130,140)])
 
     def test_draw_prints_debug_when_window_has_no_font(self):
         renderer = object.__new__(renderer_module.Renderer)

@@ -98,9 +98,14 @@ class EcosystemController:
         affinity = max(0.0, 1.0 - self._signature_distance(left.signature, right.signature) / 0.35)
         left_body, right_body = self._bodies[left.identifier], self._bodies[right.identifier]
         dx, dy = right_body.x - left_body.x, right_body.y - left_body.y
-        distance = max(1e-6, math.hypot(dx, dy))
+        distance = math.hypot(dx, dy)
+        if distance < 1e-6:
+            angle = (left.identifier * 31 + right.identifier * 17) * 0.37
+            dx, dy, distance = math.cos(angle) * 1e-6, math.sin(angle) * 1e-6, 1e-6
         attraction = affinity * min(1.0, distance) * 1.8
-        fx, fy = dx / distance * attraction, dy / distance * attraction
+        separation = (1-affinity) * max(0.0, .65-distance) * 3.0
+        force = attraction - separation
+        fx, fy = dx / distance * force, dy / distance * force
         left_body.vx += fx * dt
         left_body.vy += fy * dt
         right_body.vx -= fx * dt
