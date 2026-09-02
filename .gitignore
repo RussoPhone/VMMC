@@ -1,5 +1,6 @@
 .aider*
 .worktrees/
+.superpowers/
 .venv
 venv/
 env/
