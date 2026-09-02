@@ -1,0 +1,46 @@
+import unittest
+
+from expression.presence_tracker import PresenceEvidence, PresenceStage
+from memory.musical_memory import SoundSignature
+from state.ecosystem import EcosystemController
+
+
+class EcosystemTests(unittest.TestCase):
+    def test_similar_presences_gravitate_and_assimilate_gradually(self):
+        ecosystem = EcosystemController()
+        presences = (self._presence(1, 0.30), self._presence(2, 0.32))
+
+        first = ecosystem.update(presences, 0.1, global_cohesion=0.4)
+        initial_distance = self._distance(first.organisms[0], first.organisms[1])
+        for _ in range(120):
+            state = ecosystem.update(presences, 0.1, global_cohesion=0.4)
+
+        relation = state.relations[0]
+        self.assertLess(self._distance(state.organisms[0], state.organisms[1]), initial_distance)
+        self.assertGreater(relation.fusion, 0.5)
+        self.assertGreater(relation.assimilation, 0.0)
+        self.assertLess(relation.assimilation, 1.0)
+
+    def test_divergence_reopens_distinct_nuclei(self):
+        ecosystem = EcosystemController()
+        similar = (self._presence(1, 0.3), self._presence(2, 0.31))
+        for _ in range(120):
+            merged = ecosystem.update(similar, 0.1, global_cohesion=0.5)
+        divergent = (self._presence(1, 0.1), self._presence(2, 0.95))
+        for _ in range(60):
+            separated = ecosystem.update(divergent, 0.1, global_cohesion=0.2)
+
+        self.assertLess(separated.relations[0].fusion, merged.relations[0].fusion)
+        self.assertLess(separated.relations[0].assimilation, merged.relations[0].assimilation)
+
+    @staticmethod
+    def _presence(identifier, brightness):
+        return PresenceEvidence(identifier, SoundSignature(brightness, .2, .8, .3, .5), PresenceStage.CONFIRMED, .9, .7, 2, 3.0, 3.0)
+
+    @staticmethod
+    def _distance(left, right):
+        return ((left.x-right.x)**2 + (left.y-right.y)**2) ** .5
+
+
+if __name__ == "__main__":
+    unittest.main()
