@@ -12,6 +12,7 @@ from audio.input import AudioInput, AudioPlaybackError, PlaybackState
 from audio.live_input import SystemAudioInput
 from expression.gesture_engine import GestureEngine
 from expression.presence_tracker import PresenceTracker
+from expression.vocal_field import VocalField, VocalFieldController
 from geometry.deformation import GeometryBuilder
 from geometry.ecosystem_geometry import EcosystemGeometryBuilder
 from geometry.shape import create_circle_shape
@@ -36,6 +37,7 @@ class ExpressiveFrame:
     morphology: object
     presences: object = None
     ecosystem: object = None
+    vocal_field: object = None
 
 
 def select_audio_file(initial_dir: str = None) -> str | None:
@@ -72,6 +74,7 @@ def drain_expressive_frames(
     previous_timestamp=None,
     presence_tracker=None,
     ecosystem_controller=None,
+    vocal_field_controller=None,
 ):
     """Send every elapsed audio frame through every interpretive layer in order."""
     latest = None
@@ -86,26 +89,38 @@ def drain_expressive_frames(
         context = memory.update(features)
         gestures = gesture_engine.update(context, dt)
         morphology = morphology_controller.update(context, gestures, dt)
+        vocal_field = (
+            vocal_field_controller.update(context, dt)
+            if vocal_field_controller is not None
+            else VocalField.silent()
+        )
         presences = (
             presence_tracker.update(context, features.timestamp)
             if presence_tracker is not None
             else None
         )
-        ecosystem = (
-            ecosystem_controller.update(
-                presences,
-                dt,
-                global_cohesion=context.regimes.stability,
-                cycle_index=context.cycle_index,
-                beat_strength=max(
+        ecosystem = None
+        if ecosystem_controller is not None:
+            ecosystem_args = {
+                "global_cohesion": context.regimes.stability,
+                "cycle_index": context.cycle_index,
+                "beat_strength": max(
                     1.0 if getattr(features, "beat", False) else 0.0,
                     getattr(features, "spectral_flux", 0.0),
                 ),
-            )
-            if ecosystem_controller is not None
-            else None
+            }
+            if vocal_field_controller is not None:
+                ecosystem_args["vocal_field"] = vocal_field
+            ecosystem = ecosystem_controller.update(presences, dt, **ecosystem_args)
+        latest = ExpressiveFrame(
+            features,
+            context,
+            gestures,
+            morphology,
+            presences,
+            ecosystem,
+            vocal_field,
         )
-        latest = ExpressiveFrame(features, context, gestures, morphology, presences, ecosystem)
     return latest
 
 
@@ -164,6 +179,7 @@ def main(audio_path: str = None) -> None:
         presence_tracker = PresenceTracker()
         ecosystem_controller = EcosystemController()
         ecosystem_geometry = EcosystemGeometryBuilder()
+        vocal_field_controller = VocalFieldController()
         running = True
         last_dir = os.path.dirname(audio_path)
 
@@ -198,6 +214,7 @@ def main(audio_path: str = None) -> None:
                         presence_tracker = PresenceTracker()
                         ecosystem_controller = EcosystemController()
                         ecosystem_geometry = EcosystemGeometryBuilder()
+                        vocal_field_controller = VocalFieldController()
 
             now = time.monotonic()
             render_dt = max(0.0, min(0.1, now - last_time))
@@ -212,6 +229,7 @@ def main(audio_path: str = None) -> None:
                 previous_timestamp,
                 presence_tracker,
                 ecosystem_controller,
+                vocal_field_controller,
             )
             if new_result is not None:
                 latest = new_result
@@ -237,6 +255,7 @@ def main(audio_path: str = None) -> None:
                 audio_path,
                 audio_input,
                 latest.ecosystem if latest else None,
+                latest.vocal_field if latest else None,
             )
             renderer.draw(
                 geometry,
@@ -273,6 +292,7 @@ def _build_debug_lines(
     current_file,
     audio_input,
     ecosystem=None,
+    vocal_field=None,
 ) -> list:
     status_labels = {
         PlaybackState.STOPPED: "PARADO",
@@ -303,9 +323,14 @@ def _build_debug_lines(
                 f"mid={mid:.2f}/{mid_n:.2f} "
                 f"high={high:.2f}/{high_n:.2f}"
             )
+        lines.append(
+            "VOCAL FEATURES "
+            f"evidence={getattr(features, 'vocal_evidence', 0.0):.2f} "
+            f"intensity={getattr(features, 'vocal_intensity', 0.0):.2f}"
+        )
     if context:
         lines.append(
-            "VOICE "
+            "VOCAL CONTEXT "
             f"intensity={getattr(context, 'vocal_activity', 0.0):.2f} "
             f"presence={getattr(context, 'vocal_presence', 0.0):.2f}"
         )
@@ -346,6 +371,15 @@ def _build_debug_lines(
             f"cycle={context.cycle_index} phase={context.cycle_phase.value} "
             f"silence={context.silence_duration:.2f}"
         )
+    if vocal_field:
+        lines.append(
+            "VOCAL FIELD "
+            f"intensity={vocal_field.intensity:.2f} "
+            f"radius={vocal_field.radius:.2f} "
+            f"roughness={vocal_field.roughness:.2f} "
+            f"continuity={vocal_field.continuity:.2f} "
+            f"pressure={vocal_field.pressure:.2f}"
+        )
     if gestures:
         lines.append(
             "GESTURES "
@@ -373,6 +407,24 @@ def _build_debug_lines(
             f"core={ecosystem.core_cohesion:.2f} "
             f"core_mass={ecosystem.core_mass:.2f}"
         )
+        vocal_effect = getattr(ecosystem, "vocal_effect", None)
+        if vocal_effect is not None:
+            lines.append(
+                "VOCAL EFFECT "
+                f"reached={vocal_effect.reached_count} "
+                f"mean={vocal_effect.mean_influence:.2f} "
+                f"max={vocal_effect.max_influence:.2f} "
+                f"fluidity={vocal_effect.mean_fluidity:.2f} "
+                f"tension={vocal_effect.mean_tension:.2f} "
+                f"roughness={vocal_effect.mean_roughness:.2f}"
+            )
+        collisions = getattr(ecosystem, "collisions", None)
+        if collisions is not None:
+            lines.append(
+                "COLLISION "
+                f"contacts={collisions.contact_count} "
+                f"repulsion={collisions.max_repulsion:.2f}"
+            )
     lines.append(
         "MORPHOLOGY "
         f"wave={morphology.wave:.2f} mass={morphology.mass:.2f} "
