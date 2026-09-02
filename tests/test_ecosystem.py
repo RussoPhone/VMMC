@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from expression.presence_tracker import PresenceEvidence, PresenceStage
@@ -51,9 +52,37 @@ class EcosystemTests(unittest.TestCase):
         self.assertEqual(state.stored_body_count, 1)
         self.assertEqual(state.relations, ())
 
+    def test_core_ejects_new_presence_and_transfers_mass(self):
+        ecosystem = EcosystemController()
+        presence = self._presence(1, .3)
+
+        born = ecosystem.update((presence,), .1)
+        born_radius = math.hypot(born.organisms[0].x, born.organisms[0].y)
+        for _ in range(30):
+            evolved = ecosystem.update((presence,), .1)
+
+        self.assertLess(born.core_mass, 1.0)
+        self.assertGreater(
+            math.hypot(evolved.organisms[0].x, evolved.organisms[0].y),
+            born_radius + .15,
+        )
+
+    def test_inactive_presence_returns_and_is_assimilated_by_core(self):
+        ecosystem = EcosystemController()
+        active = self._presence(1, .3)
+        for _ in range(40):
+            outward = ecosystem.update((active,), .1)
+        depleted_core = outward.core_mass
+        inactive = PresenceEvidence(**{**vars(active), "active": False})
+        for _ in range(240):
+            returned = ecosystem.update((inactive,), .1)
+
+        self.assertEqual(returned.organisms, ())
+        self.assertGreater(returned.core_mass, depleted_core)
+
     @staticmethod
     def _presence(identifier, brightness):
-        return PresenceEvidence(identifier, SoundSignature(brightness, .2, .8, .3, .5), PresenceStage.CONFIRMED, .9, .7, 2, 3.0, 3.0)
+        return PresenceEvidence(identifier, SoundSignature(brightness, .2, .8, .3, .5), PresenceStage.CONFIRMED, .9, .7, 2, 3.0, 3.0, True)
 
     @staticmethod
     def _distance(left, right):

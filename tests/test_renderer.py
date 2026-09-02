@@ -78,7 +78,7 @@ class RendererResizeTests(unittest.TestCase):
 
         self.assertEqual([call.args[1] for call in polygon.call_args_list], [(30,40,50),(60,70,80),(75,85,95),(120,130,140)])
 
-    def test_draw_prints_debug_when_window_has_no_font(self):
+    def test_draw_does_not_flood_terminal_when_window_has_no_font(self):
         renderer = object.__new__(renderer_module.Renderer)
         renderer.width = 800
         renderer.height = 800
@@ -99,16 +99,15 @@ class RendererResizeTests(unittest.TestCase):
                 ["energy=0.50"],
             )
 
-        renderer._print_debug_text.assert_called_once_with(["energy=0.50"])
+        renderer._print_debug_text.assert_not_called()
 
     def test_terminal_debug_is_throttled_when_values_change_each_frame(self):
         renderer = object.__new__(renderer_module.Renderer)
         renderer.width = 800
         renderer.height = 800
-        renderer.screen = Mock()
-        renderer.screen.get_size.return_value = (800, 800)
+        renderer.screen = None
         renderer.font = None
-        renderer.headless = False
+        renderer.headless = True
         renderer.last_debug_lines = []
         renderer.clock = Mock()
         renderer._print_debug_text = Mock()

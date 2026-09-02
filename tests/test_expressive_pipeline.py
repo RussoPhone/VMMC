@@ -121,6 +121,7 @@ class ExpressivePipelineTests(unittest.TestCase):
                 organisms=(object(), object()),
                 relations=(SimpleNamespace(fusion=.7, assimilation=.3),),
                 core_cohesion=.4,
+                core_mass=.6,
             ),
         )
 
@@ -140,6 +141,7 @@ class ExpressivePipelineTests(unittest.TestCase):
         self.assertIn("cycle=2", text)
         self.assertIn("silence=4.50", text)
         self.assertIn("prominence=0.80", text)
+        self.assertIn("core_mass=0.60", text)
 
     def test_optional_ecology_receives_every_interpreted_frame(self):
         frames = [SimpleNamespace(frame_index=0), SimpleNamespace(frame_index=1)]

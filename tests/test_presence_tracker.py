@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from expression.presence_tracker import PresenceStage, PresenceTracker
 from memory.musical_memory import SoundSignature
+from memory.musical_memory import CyclePhase
 
 
 class PresenceTrackerTests(unittest.TestCase):
@@ -52,6 +53,14 @@ class PresenceTrackerTests(unittest.TestCase):
 
         self.assertNotIn(seed.identifier, {item.identifier for item in remaining})
 
+    def test_contextual_silence_never_germinates_a_presence(self):
+        tracker = PresenceTracker()
+        context = self._context(0.0)
+        context.energy = 0.0
+        context.cycle_phase = CyclePhase.QUIETING
+
+        self.assertEqual(tracker.update(context), ())
+
     def _visibility_after_absence(self, fps):
         tracker = PresenceTracker()
         original = tracker.update(self._context(0.0, brightness=.1))[0]
@@ -68,6 +77,8 @@ class PresenceTrackerTests(unittest.TestCase):
             prominence=prominence,
             signature_continuity=0.7,
             cycle_index=0,
+            energy=.4,
+            cycle_phase=CyclePhase.LISTENING,
         )
 
 

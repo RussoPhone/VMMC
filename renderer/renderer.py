@@ -163,8 +163,6 @@ class Renderer:
                         y_offset += 18
                 except Exception as e:
                     print(f"[AVISO] Erro ao desenhar HUD: {e}")
-            elif debug_lines:
-                self._maybe_print_debug(debug_lines)
 
             pygame.display.flip()
         except Exception as e:

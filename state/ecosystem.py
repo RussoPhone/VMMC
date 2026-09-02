@@ -30,6 +30,7 @@ class EcosystemState:
     organisms: tuple[OrganismState, ...]
     relations: tuple[RelationState, ...]
     core_cohesion: float
+    core_mass: float = 1.0
     stored_body_count: int = 0
 
 
@@ -40,6 +41,11 @@ class _Body:
     y: float
     vx: float = 0.0
     vy: float = 0.0
+    visibility: float = 0.0
+    prominence: float = 0.0
+    genome: VisualGenome | None = None
+    mass: float = 0.1
+    active: bool = True
 
 
 @dataclass
@@ -54,6 +60,8 @@ class EcosystemController:
         self._relations = {}
         self._core_cohesion = 1.0
         self._cycle_index = None
+        self._core_mass = 1.0
+        self._time = 0.0
 
     def update(self, presences, dt, global_cohesion=0.5, cycle_index=0):
         if cycle_index != self._cycle_index:
@@ -61,46 +69,96 @@ class EcosystemController:
             self._bodies.clear()
             self._relations.clear()
             self._core_cohesion = 1.0
+            self._core_mass = 1.0
+            self._time = 0.0
         dt = max(0.0, min(0.1, dt))
+        self._time += dt
         visible = sorted(presences, key=lambda item: item.identifier)
         for presence in visible:
             if presence.identifier not in self._bodies:
+                if not presence.active:
+                    continue
                 angle = presence.identifier * 2.399963229728653
-                radius = 0.7 + (presence.identifier % 5) * 0.08
+                mass = min(.2, .07 + presence.prominence * .1)
+                radius = .28 + math.sqrt(max(.05, self._core_mass)) * .18
                 self._bodies[presence.identifier] = _Body(
-                    presence.identifier, math.cos(angle) * radius, math.sin(angle) * radius
+                    presence.identifier,
+                    math.cos(angle) * radius,
+                    math.sin(angle) * radius,
+                    math.cos(angle) * (.28 + presence.prominence * .18),
+                    math.sin(angle) * (.28 + presence.prominence * .18),
+                    presence.visibility,
+                    presence.prominence,
+                    VisualGenome.derive(presence.identifier, presence.signature),
+                    mass,
+                    presence.active,
                 )
+                self._core_mass = max(.08, self._core_mass - mass)
+            body = self._bodies.get(presence.identifier)
+            if body is None:
+                continue
+            body.visibility = presence.visibility
+            body.prominence = presence.prominence
+            body.genome = VisualGenome.derive(presence.identifier, presence.signature)
+            body.active = presence.active
 
         relation_states = []
-        signature_order = sorted(visible, key=lambda item: item.signature.brightness)
+        signature_order = sorted(
+            (item for item in visible if item.identifier in self._bodies and item.active),
+            key=lambda item: item.signature.brightness,
+        )
         for left, right in zip(signature_order, signature_order[1:]):
             relation_states.append(self._update_relation(left, right, dt))
 
-        active_ids = {item.identifier for item in visible}
+        returned = []
         for body in self._bodies.values():
-            if body.identifier not in active_ids:
-                continue
-            body.vx *= max(0.0, 1.0 - 2.4 * dt)
-            body.vy *= max(0.0, 1.0 - 2.4 * dt)
+            radius = max(1e-6, math.hypot(body.x, body.y))
+            ux, uy = body.x / radius, body.y / radius
+            if body.active:
+                avoid = max(0.0, .62 - radius) * 2.4
+                swirl = .12 + body.prominence * .18
+                wander = math.sin(self._time * .73 + body.identifier * 1.91) * .09
+                body.vx += (ux * avoid - uy * swirl + math.cos(body.identifier) * wander) * dt
+                body.vy += (uy * avoid + ux * swirl + math.sin(body.identifier) * wander) * dt
+                if radius > 1.25:
+                    body.vx -= ux * (radius - 1.25) * 1.8 * dt
+                    body.vy -= uy * (radius - 1.25) * 1.8 * dt
+            else:
+                body.vx += (-body.x * 1.35 - body.vx * .9) * dt
+                body.vy += (-body.y * 1.35 - body.vy * .9) * dt
+            damping = 1.0 - (.18 if body.active else .55) * dt
+            body.vx *= max(0.0, damping)
+            body.vy *= max(0.0, damping)
             body.x += body.vx * dt
             body.y += body.vy * dt
+            if not body.active and math.hypot(body.x, body.y) < .2:
+                returned.append(body.identifier)
+
+        for identifier in returned:
+            body = self._bodies.pop(identifier)
+            self._core_mass = min(1.0, self._core_mass + body.mass)
+            self._relations = {
+                key: value for key, value in self._relations.items()
+                if identifier not in key
+            }
 
         self._core_cohesion += (global_cohesion - self._core_cohesion) * min(1.0, dt * 0.7)
         organisms = tuple(
             OrganismState(
-                item.identifier,
-                self._bodies[item.identifier].x,
-                self._bodies[item.identifier].y,
-                item.visibility,
-                item.prominence,
-                VisualGenome.derive(item.identifier, item.signature),
+                body.identifier,
+                body.x,
+                body.y,
+                body.visibility,
+                body.prominence,
+                body.genome,
             )
-            for item in visible
+            for body in sorted(self._bodies.values(), key=lambda item: item.identifier)
         )
         return EcosystemState(
             organisms,
             tuple(relation_states),
             self._core_cohesion,
+            self._core_mass,
             len(self._bodies),
         )
 
@@ -114,15 +172,15 @@ class EcosystemController:
         if distance < 1e-6:
             angle = (left.identifier * 31 + right.identifier * 17) * 0.37
             dx, dy, distance = math.cos(angle) * 1e-6, math.sin(angle) * 1e-6, 1e-6
-        attraction = affinity * min(1.0, distance) * 1.8
-        separation = (1-affinity) * max(0.0, .65-distance) * 3.0
+        attraction = affinity * min(1.0, distance) * .9
+        separation = (1-affinity) * max(0.0, .48-distance) * 3.0
         force = attraction - separation
         fx, fy = dx / distance * force, dy / distance * force
         left_body.vx += fx * dt
         left_body.vy += fy * dt
         right_body.vx -= fx * dt
         right_body.vy -= fy * dt
-        fusion_target = affinity if distance < 0.55 else 0.0
+        fusion_target = affinity if distance < 0.68 else 0.0
         fusion_rate = 0.8 if fusion_target > relation.fusion else 1.4
         relation.fusion += (fusion_target - relation.fusion) * min(1.0, fusion_rate * dt)
         assimilation_target = max(0.0, (relation.fusion - 0.45) / 0.55)

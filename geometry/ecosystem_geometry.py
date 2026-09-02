@@ -51,11 +51,12 @@ class EcosystemGeometryBuilder:
             for body in ecosystem.organisms
             if body.visibility > .01
         )
-        if core_geometry is not None and ecosystem.core_cohesion > .02:
+        if core_geometry is not None and ecosystem.core_mass > .02:
             cohesion = ecosystem.core_cohesion
+            core_scale = math.sqrt(ecosystem.core_mass) * (.72 + cohesion * .28)
             core = OrganismGeometry(
                 0,
-                tuple((x * cohesion, y * cohesion) for x, y in core_geometry.body_vertices),
+                tuple((x * core_scale, y * core_scale) for x, y in core_geometry.body_vertices),
                 core_geometry.fill_color,
                 core_geometry.outline_color,
                 cohesion,
@@ -63,7 +64,7 @@ class EcosystemGeometryBuilder:
             organisms = (core,) + organisms
             fragments = tuple(
                 type(fragment)(
-                    tuple((x * cohesion, y * cohesion) for x, y in fragment.vertices),
+                    tuple((x * core_scale, y * core_scale) for x, y in fragment.vertices),
                     fragment.color,
                 )
                 for fragment in core_geometry.fragments
@@ -82,11 +83,17 @@ class EcosystemGeometryBuilder:
         vertices = []
         for index in range(self.vertex_count):
             angle = math.tau * index / self.vertex_count
-            wave = math.sin(angle * 3 + time_elapsed * (.5 + genome.fluidity)) * genome.wave * .09
+            wave = math.sin(angle * 3 + time_elapsed * (.35 + genome.fluidity * .45)) * genome.wave * .045
             shard = max(0, math.sin(angle * 7 + time_elapsed * genome.elasticity)) ** 5 * genome.shard * .12
             rough = math.sin(angle * 13 + body.identifier) * genome.roughness * .035
             asymmetry = math.sin(angle + body.identifier) * (1-genome.symmetry) * .1
-            radius = scale * (1 + wave + shard + rough + asymmetry)
+            mutation = genome.roughness * .55 + genome.shard * .45
+            living_lobes = math.sin(
+                angle * (4 + round(genome.shard * 5))
+                + time_elapsed * (1.4 + genome.elasticity * 2.2)
+                + math.sin(time_elapsed * .61 + body.identifier) * 1.2
+            ) * mutation * .23
+            radius = scale * (1 + wave + shard + rough + asymmetry + living_lobes)
             vertices.append((body.x + math.cos(angle) * radius, body.y + math.sin(angle) * radius))
         assimilation = relation.assimilation if relation else 0.0
         return OrganismGeometry(

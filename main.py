@@ -345,7 +345,8 @@ def _build_debug_lines(
             f"relations={len(ecosystem.relations)} "
             f"fusion={maximum_fusion:.2f} "
             f"assimilation={maximum_assimilation:.2f} "
-            f"core={ecosystem.core_cohesion:.2f}"
+            f"core={ecosystem.core_cohesion:.2f} "
+            f"core_mass={ecosystem.core_mass:.2f}"
         )
     lines.append(
         "MORPHOLOGY "

@@ -25,6 +25,7 @@ class PresenceEvidence:
     recurrences: int
     age: float
     last_seen: float
+    active: bool = True
 
 
 @dataclass
@@ -61,8 +62,10 @@ class PresenceTracker:
             self._cycle_index = context.cycle_index
             self._presences.clear()
 
-        match = self._nearest(context.signature)
-        if match is None:
+        phase = getattr(getattr(context, "cycle_phase", None), "value", "listening")
+        musically_active = phase == "listening" and getattr(context, "energy", 1.0) > .01
+        match = self._nearest(context.signature) if musically_active else None
+        if match is None and musically_active:
             stage = (
                 PresenceStage.EPHEMERAL
                 if context.prominence >= self.exceptional_prominence
@@ -80,7 +83,7 @@ class PresenceTracker:
             )
             self._next_identifier += 1
             self._presences.append(match)
-        else:
+        elif match is not None:
             gap = timestamp - match.last_seen
             if gap >= self.return_gap_seconds:
                 match.recurrences += 1
@@ -155,4 +158,5 @@ class PresenceTracker:
             item.recurrences,
             timestamp - item.born_at,
             item.last_seen,
+            item.absent_since is None,
         )
