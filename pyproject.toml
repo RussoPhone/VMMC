@@ -17,9 +17,10 @@ dependencies = [
 
 [project.scripts]
 vmmc = "main:cli"
+vmmc-vocal = "vocal_main:cli"
 
 [tool.setuptools]
-py-modules = ["main"]
+py-modules = ["main", "vocal_main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
