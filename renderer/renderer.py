@@ -52,7 +52,7 @@ class Renderer:
             self.font = pygame.font.SysFont("consolas", 16)
         except Exception as e:
             print(f"[AVISO] pygame.font nao disponivel ({e})")
-            print(f"        HUD sera texto puro, sem fonte grafica")
+            print("        HUD grafico desativado; visualizacao continua normalmente")
             self.font = None
 
     def handle_events(self) -> Union[List[pygame.event.Event], bool]:

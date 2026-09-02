@@ -80,6 +80,17 @@ class EcosystemTests(unittest.TestCase):
         self.assertEqual(returned.organisms, ())
         self.assertGreater(returned.core_mass, depleted_core)
 
+    def test_births_never_create_more_mass_than_the_core_owned(self):
+        ecosystem = EcosystemController()
+        presences = tuple(self._presence(index, (index % 5) * .15) for index in range(1, 21))
+
+        state = ecosystem.update(presences, .1)
+
+        self.assertLessEqual(
+            state.core_mass + sum(body.mass for body in state.organisms),
+            1.0 + 1e-9,
+        )
+
     @staticmethod
     def _presence(identifier, brightness):
         return PresenceEvidence(identifier, SoundSignature(brightness, .2, .8, .3, .5), PresenceStage.CONFIRMED, .9, .7, 2, 3.0, 3.0, True)

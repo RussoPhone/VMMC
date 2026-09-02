@@ -76,6 +76,15 @@ class EcosystemGeometryTests(unittest.TestCase):
 
         self.assertGreater(mutable_motion, clean_motion * 1.5)
 
+    def test_impulsive_mutable_sound_grows_distinct_extensions(self):
+        mutable = VisualGenome(.15,.35,.95,.9,.25,.15,.9,.08,.8,.7)
+        state = EcosystemState((OrganismState(3,0,0,1,.9,mutable,.12,.7,.2),),(),.4)
+
+        body = EcosystemGeometryBuilder(vertex_count=64).build(state, .7).organisms[0]
+        radii = [math.hypot(x, y) for x, y in body.vertices]
+
+        self.assertGreater(max(radii) / min(radii), 1.7)
+
 
 if __name__ == "__main__":
     unittest.main()

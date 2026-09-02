@@ -79,8 +79,11 @@ class EcosystemGeometryBuilder:
 
     def _organism(self, body, relation, time_elapsed):
         genome = body.genome
-        scale = (.13 + genome.mass * .15 + body.prominence * .09) * (.35 + body.visibility * .65)
+        mass_scale = math.sqrt(max(.01, body.mass) / .1)
+        scale = (.13 + genome.mass * .15 + body.prominence * .09) * (.35 + body.visibility * .65) * mass_scale
         vertices = []
+        orientation = math.atan2(body.velocity_y, body.velocity_x)
+        speed = min(1.0, math.hypot(body.velocity_x, body.velocity_y))
         for index in range(self.vertex_count):
             angle = math.tau * index / self.vertex_count
             wave = math.sin(angle * 3 + time_elapsed * (.35 + genome.fluidity * .45)) * genome.wave * .045
@@ -93,8 +96,27 @@ class EcosystemGeometryBuilder:
                 + time_elapsed * (1.4 + genome.elasticity * 2.2)
                 + math.sin(time_elapsed * .61 + body.identifier) * 1.2
             ) * mutation * .23
-            radius = scale * (1 + wave + shard + rough + asymmetry + living_lobes)
-            vertices.append((body.x + math.cos(angle) * radius, body.y + math.sin(angle) * radius))
+            extension_direction = orientation + math.sin(
+                time_elapsed * .47 + body.identifier
+            ) * .8
+            extension = max(0.0, math.cos(angle - extension_direction)) ** 8
+            extension *= mutation * (.35 + genome.elasticity * .45)
+            concavity = max(0.0, math.sin(angle * 2 - time_elapsed * .8)) ** 6
+            concavity *= genome.roughness * .18
+            radius = scale * (
+                1 + wave + shard + rough + asymmetry + living_lobes
+                + extension - concavity
+            )
+            stretch = 1 + speed * .55 + genome.shard * .22
+            local_x = math.cos(angle) * radius * stretch
+            local_y = math.sin(angle) * radius / math.sqrt(stretch)
+            cos_o, sin_o = math.cos(orientation), math.sin(orientation)
+            vertices.append(
+                (
+                    body.x + local_x * cos_o - local_y * sin_o,
+                    body.y + local_x * sin_o + local_y * cos_o,
+                )
+            )
         assimilation = relation.assimilation if relation else 0.0
         return OrganismGeometry(
             body.identifier,

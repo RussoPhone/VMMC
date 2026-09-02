@@ -14,6 +14,9 @@ class OrganismState:
     visibility: float
     prominence: float
     genome: VisualGenome
+    mass: float = 0.1
+    velocity_x: float = 0.0
+    velocity_y: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -79,7 +82,10 @@ class EcosystemController:
                 if not presence.active:
                     continue
                 angle = presence.identifier * 2.399963229728653
-                mass = min(.2, .07 + presence.prominence * .1)
+                desired_mass = min(.2, .07 + presence.prominence * .1)
+                mass = min(desired_mass, max(0.0, self._core_mass - .08))
+                if mass < .02:
+                    continue
                 radius = .28 + math.sqrt(max(.05, self._core_mass)) * .18
                 self._bodies[presence.identifier] = _Body(
                     presence.identifier,
@@ -93,7 +99,7 @@ class EcosystemController:
                     mass,
                     presence.active,
                 )
-                self._core_mass = max(.08, self._core_mass - mass)
+                self._core_mass -= mass
             body = self._bodies.get(presence.identifier)
             if body is None:
                 continue
@@ -151,6 +157,9 @@ class EcosystemController:
                 body.visibility,
                 body.prominence,
                 body.genome,
+                body.mass,
+                body.vx,
+                body.vy,
             )
             for body in sorted(self._bodies.values(), key=lambda item: item.identifier)
         )
