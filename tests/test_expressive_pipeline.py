@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import main
 from audio.input import PlaybackState
+from memory.adaptive_landscape import RelativeFeatures
+from memory.musical_memory import CyclePhase, RegimeWeights, SoundSignature
 
 
 class ExpressivePipelineTests(unittest.TestCase):
@@ -75,6 +77,14 @@ class ExpressivePipelineTests(unittest.TestCase):
             tension=0.8,
             activity=0.5,
             persistence=0.6,
+            relative=RelativeFeatures(0.2, -0.1, 0.3, 0.4, 0.9),
+            signature=SoundSignature(0.6, 0.2, 0.8, 0.4, 0.5),
+            signature_continuity=0.7,
+            prominence=0.8,
+            regimes=RegimeWeights(0.6, 0.4, 0.2, 0.3, 0.5, 0.1, 0.7),
+            cycle_phase=CyclePhase.QUIETING,
+            cycle_index=2,
+            silence_duration=4.5,
         )
         gestures = SimpleNamespace(
             pressure=0.8,
@@ -110,8 +120,20 @@ class ExpressivePipelineTests(unittest.TestCase):
         )
 
         text = "\n".join(lines)
-        for heading in ("AUDIO", "CONTEXT", "GESTURES", "MORPHOLOGY", "COLOR"):
+        for heading in (
+            "AUDIO",
+            "CONTEXT",
+            "LANDSCAPE",
+            "SIGNATURE",
+            "REGIME",
+            "GESTURES",
+            "MORPHOLOGY",
+            "COLOR",
+        ):
             self.assertIn(heading, text)
+        self.assertIn("cycle=2", text)
+        self.assertIn("silence=4.50", text)
+        self.assertIn("prominence=0.80", text)
 
 
 if __name__ == "__main__":

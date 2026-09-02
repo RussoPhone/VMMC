@@ -255,6 +255,36 @@ def _build_debug_lines(
             f"novelty={context.novelty:.2f} stability={context.stability:.2f} "
             f"tension={context.tension:.2f} persistence={context.persistence:.2f}"
         )
+        lines.append(
+            "LANDSCAPE "
+            f"energy={context.relative.energy:+.2f} "
+            f"brightness={context.relative.brightness:+.2f} "
+            f"texture={context.relative.texture:+.2f} "
+            f"activity={context.relative.activity:+.2f} "
+            f"confidence={context.relative.confidence:.2f}"
+        )
+        lines.append(
+            "SIGNATURE "
+            f"brightness={context.signature.brightness:.2f} "
+            f"noise={context.signature.noisiness:.2f} "
+            f"harmonicity={context.signature.harmonicity:.2f} "
+            f"attack={context.signature.attack:.2f} "
+            f"density={context.signature.density:.2f} "
+            f"continuity={context.signature_continuity:.2f} "
+            f"prominence={context.prominence:.2f}"
+        )
+        lines.append(
+            "REGIME "
+            f"stable={context.regimes.stability:.2f} "
+            f"building={context.regimes.building:.2f} "
+            f"suspension={context.regimes.suspension:.2f} "
+            f"rupture={context.regimes.rupture:.2f} "
+            f"climax={context.regimes.climax:.2f} "
+            f"release={context.regimes.release:.2f} "
+            f"transition={context.regimes.transition:.2f} "
+            f"cycle={context.cycle_index} phase={context.cycle_phase.value} "
+            f"silence={context.silence_duration:.2f}"
+        )
     if gestures:
         lines.append(
             "GESTURES "

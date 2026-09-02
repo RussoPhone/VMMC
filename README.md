@@ -6,6 +6,19 @@ Visualizador de música com memória contextual. Uma única forma geométrica re
 áudio → características → memória → contexto → gestos → morfologia → geometria
 ```
 
+O VMMC aprende uma paisagem relativa durante cada música. Assim, uma mudança
+sutil pode ganhar força em uma faixa delicada sem exigir os mesmos valores
+absolutos de uma gravação intensa. A escuta combina essa paisagem com
+assinaturas sonoras probabilísticas — brilho, ruído, harmonicidade, ataque e
+densidade — e regimes contextuais contínuos como construção, suspensão,
+ruptura, clímax, liberação e transição. Essas dimensões podem coexistir; elas
+não tentam impor um rótulo rígido de instrumento ao som.
+
+Uma troca contínua de timbre continua pertencendo ao mesmo percurso musical.
+Após 12 segundos de silêncio contextual, porém, o ciclo é encerrado; quando o
+som retorna, uma nova paisagem começa a ser aprendida sem carregar indevidamente
+o contexto da música anterior.
+
 ## Instalação no Arch Linux
 
 Instale as bibliotecas de sistema:
@@ -80,8 +93,9 @@ Os testes de áudio usam um stream em memória e não precisam tocar som.
 Se `pygame.font` não estiver disponível, a janela e o som continuam
 funcionando e os valores de debug são mostrados no terminal.
 
-O HUD expõe cada etapa do pipeline em grupos (`AUDIO`, `CONTEXT`, `GESTURES`,
-`MORPHOLOGY` e `COLOR`) para explicar por que o corpo assumiu seu estado atual.
+O HUD expõe cada etapa do pipeline em grupos (`AUDIO`, `CONTEXT`, `LANDSCAPE`,
+`SIGNATURE`, `REGIME`, `GESTURES`, `MORPHOLOGY` e `COLOR`) para explicar por que
+o corpo assumiu seu estado atual.
 
 ## Sem som no Arch Linux
 
