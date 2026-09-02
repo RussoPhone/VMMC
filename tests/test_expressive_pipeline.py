@@ -135,6 +135,22 @@ class ExpressivePipelineTests(unittest.TestCase):
         self.assertIn("silence=4.50", text)
         self.assertIn("prominence=0.80", text)
 
+    def test_optional_ecology_receives_every_interpreted_frame(self):
+        frames = [SimpleNamespace(frame_index=0), SimpleNamespace(frame_index=1)]
+        audio = SimpleNamespace(get_next_frame=lambda: frames.pop(0) if frames else None)
+        analyzer = SimpleNamespace(analyze=lambda frame: SimpleNamespace(timestamp=frame.frame_index/30, index=frame.frame_index))
+        memory = SimpleNamespace(update=lambda features: SimpleNamespace(index=features.index, regimes=SimpleNamespace(stability=.6)))
+        gestures = SimpleNamespace(update=lambda context, dt: SimpleNamespace(index=context.index))
+        morphology = SimpleNamespace(update=lambda context, value, dt: SimpleNamespace(index=context.index))
+        seen = []
+        tracker = SimpleNamespace(update=lambda context, timestamp: (context.index,))
+        ecosystem = SimpleNamespace(update=lambda presences, dt, global_cohesion: seen.append(presences) or SimpleNamespace(organisms=presences))
+
+        result = main.drain_expressive_frames(audio, analyzer, memory, gestures, morphology, presence_tracker=tracker, ecosystem_controller=ecosystem)
+
+        self.assertEqual(seen, [(0,), (1,)])
+        self.assertEqual(result.ecosystem.organisms, (1,))
+
 
 if __name__ == "__main__":
     unittest.main()

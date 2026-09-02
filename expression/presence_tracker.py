@@ -54,8 +54,8 @@ class PresenceTracker:
         self._next_identifier = 1
         self._presences = []
 
-    def update(self, context) -> tuple[PresenceEvidence, ...]:
-        timestamp = float(context.timestamp)
+    def update(self, context, timestamp=None) -> tuple[PresenceEvidence, ...]:
+        timestamp = float(context.timestamp if timestamp is None else timestamp)
         if self._cycle_index != context.cycle_index:
             self._cycle_index = context.cycle_index
             self._presences.clear()

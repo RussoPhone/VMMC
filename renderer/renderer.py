@@ -94,7 +94,20 @@ class Renderer:
             self.center, self.radius_px = viewport_for_size(self.width, self.height)
             self.screen.fill((10, 10, 18))
 
-            if hasattr(geometry, "body_vertices"):
+            if hasattr(geometry, "organisms"):
+                for connection in geometry.connections:
+                    points = self._screen_points(connection.vertices)
+                    if len(points) >= 3:
+                        pygame.draw.polygon(self.screen, connection.color, points, width=0)
+                for organism in geometry.organisms:
+                    points = self._screen_points(organism.vertices)
+                    if len(points) >= 3:
+                        pygame.draw.polygon(self.screen, organism.fill_color, points, width=0)
+                        pygame.draw.polygon(self.screen, organism.outline_color, points, width=2)
+                vertices = []
+                fragments = []
+                fill_color = outline_color = (0, 0, 0)
+            elif hasattr(geometry, "body_vertices"):
                 vertices = geometry.body_vertices
                 fill_color = geometry.fill_color
                 outline_color = geometry.outline_color
@@ -146,6 +159,12 @@ class Renderer:
             print(f"[AVISO] Erro ao desenhar: {e}")
 
         self.clock.tick(fps_limit)
+
+    def _screen_points(self, vertices):
+        return [
+            (self.center[0] + x * self.radius_px, self.center[1] + y * self.radius_px)
+            for x, y in vertices
+        ]
 
     def _print_debug_text(self, debug_lines: List[str]) -> None:
         """Imprime HUD em texto puro no terminal."""

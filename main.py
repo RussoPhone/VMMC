@@ -11,11 +11,14 @@ from audio.analyzer import AudioAnalyzer
 from audio.input import AudioInput, AudioPlaybackError, PlaybackState
 from audio.live_input import SystemAudioInput
 from expression.gesture_engine import GestureEngine
+from expression.presence_tracker import PresenceTracker
 from geometry.deformation import GeometryBuilder
+from geometry.ecosystem_geometry import EcosystemGeometryBuilder
 from geometry.shape import create_circle_shape
 from memory.musical_memory import MusicalMemory
 from renderer.renderer import Renderer
 from state.morphology import MorphologyController
+from state.ecosystem import EcosystemController
 
 
 AUDIO_EXTENSIONS = [
@@ -31,6 +34,8 @@ class ExpressiveFrame:
     context: object
     gestures: object
     morphology: object
+    presences: object = None
+    ecosystem: object = None
 
 
 def select_audio_file(initial_dir: str = None) -> str | None:
@@ -65,6 +70,8 @@ def drain_expressive_frames(
     gesture_engine,
     morphology_controller,
     previous_timestamp=None,
+    presence_tracker=None,
+    ecosystem_controller=None,
 ):
     """Send every elapsed audio frame through every interpretive layer in order."""
     latest = None
@@ -79,7 +86,21 @@ def drain_expressive_frames(
         context = memory.update(features)
         gestures = gesture_engine.update(context, dt)
         morphology = morphology_controller.update(context, gestures, dt)
-        latest = ExpressiveFrame(features, context, gestures, morphology)
+        presences = (
+            presence_tracker.update(context, features.timestamp)
+            if presence_tracker is not None
+            else None
+        )
+        ecosystem = (
+            ecosystem_controller.update(
+                presences,
+                dt,
+                global_cohesion=context.regimes.stability,
+            )
+            if ecosystem_controller is not None
+            else None
+        )
+        latest = ExpressiveFrame(features, context, gestures, morphology, presences, ecosystem)
     return latest
 
 
@@ -135,6 +156,9 @@ def main(audio_path: str = None) -> None:
         start_time = time.monotonic()
         last_time = start_time
         latest = None
+        presence_tracker = PresenceTracker()
+        ecosystem_controller = EcosystemController()
+        ecosystem_geometry = EcosystemGeometryBuilder()
         running = True
         last_dir = os.path.dirname(audio_path)
 
@@ -166,6 +190,9 @@ def main(audio_path: str = None) -> None:
                         start_time = time.monotonic()
                         last_time = start_time
                         latest = None
+                        presence_tracker = PresenceTracker()
+                        ecosystem_controller = EcosystemController()
+                        ecosystem_geometry = EcosystemGeometryBuilder()
 
             now = time.monotonic()
             render_dt = max(0.0, min(0.1, now - last_time))
@@ -178,6 +205,8 @@ def main(audio_path: str = None) -> None:
                 gesture_engine,
                 morphology_controller,
                 previous_timestamp,
+                presence_tracker,
+                ecosystem_controller,
             )
             if new_result is not None:
                 latest = new_result
@@ -189,6 +218,12 @@ def main(audio_path: str = None) -> None:
                 now - start_time,
                 render_dt,
             )
+            if latest and latest.ecosystem and latest.ecosystem.organisms:
+                geometry = ecosystem_geometry.build(
+                    latest.ecosystem,
+                    now - start_time,
+                    geometry,
+                )
             debug_lines = _build_debug_lines(
                 latest.features if latest else None,
                 latest.context if latest else None,

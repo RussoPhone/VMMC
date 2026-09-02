@@ -59,6 +59,24 @@ class RendererResizeTests(unittest.TestCase):
         init_display.assert_called_once_with()
         init_all.assert_not_called()
 
+    def test_draws_compound_ecosystem_connections_before_organisms(self):
+        renderer = object.__new__(renderer_module.Renderer)
+        renderer.width = renderer.height = 800
+        renderer.screen = Mock()
+        renderer.screen.get_size.return_value = (800, 800)
+        renderer.font = None
+        renderer.headless = False
+        renderer.last_debug_lines = []
+        renderer.clock = Mock()
+        geometry = SimpleNamespace(
+            connections=(SimpleNamespace(vertices=((0,0),(.2,0),(.2,.1),(0,.1)), color=(30,40,50)),),
+            organisms=(SimpleNamespace(vertices=((0,0),(.2,0),(0,.2)), fill_color=(60,70,80), outline_color=(90,100,110), outline_alpha=.5),),
+        )
+        with patch.object(renderer_module.pygame.draw, "polygon") as polygon, patch.object(renderer_module.pygame.display, "flip"):
+            renderer.draw(geometry)
+
+        self.assertEqual([call.args[1] for call in polygon.call_args_list], [(30,40,50),(60,70,80),(90,100,110)])
+
     def test_draw_prints_debug_when_window_has_no_font(self):
         renderer = object.__new__(renderer_module.Renderer)
         renderer.width = 800

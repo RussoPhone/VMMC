@@ -37,7 +37,7 @@ class EcosystemGeometryBuilder:
     def __init__(self, vertex_count=40):
         self.vertex_count = max(12, vertex_count)
 
-    def build(self, ecosystem, time_elapsed):
+    def build(self, ecosystem, time_elapsed, core_geometry=None):
         relations = {
             identifier: relation
             for relation in ecosystem.relations
@@ -48,6 +48,16 @@ class EcosystemGeometryBuilder:
             for body in ecosystem.organisms
             if body.visibility > .01
         )
+        if core_geometry is not None and ecosystem.core_cohesion > .02:
+            cohesion = ecosystem.core_cohesion
+            core = OrganismGeometry(
+                0,
+                tuple((x * cohesion, y * cohesion) for x, y in core_geometry.body_vertices),
+                core_geometry.fill_color,
+                core_geometry.outline_color,
+                cohesion,
+            )
+            organisms = (core,) + organisms
         by_id = {body.identifier: body for body in ecosystem.organisms}
         connections = tuple(
             self._connection(by_id[relation.left_id], by_id[relation.right_id], relation)

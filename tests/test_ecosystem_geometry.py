@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from geometry.ecosystem_geometry import EcosystemGeometryBuilder
 from state.ecosystem import EcosystemState, OrganismState, RelationState
@@ -33,6 +34,17 @@ class EcosystemGeometryTests(unittest.TestCase):
 
         self.assertEqual({body.identifier for body in snapshot.organisms}, {1, 2})
         self.assertLess(snapshot.organisms[0].outline_alpha, 0.5)
+
+    def test_global_body_fades_with_ecosystem_cohesion(self):
+        core = SimpleNamespace(body_vertices=[(-1,0),(0,1),(1,0)], fill_color=(10,20,30), outline_color=(40,50,60))
+        coherent = EcosystemState((), (), 1.0)
+        dissolved = EcosystemState((), (), 0.0)
+
+        visible = EcosystemGeometryBuilder().build(coherent, 0.0, core)
+        hidden = EcosystemGeometryBuilder().build(dissolved, 0.0, core)
+
+        self.assertEqual(visible.organisms[0].identifier, 0)
+        self.assertEqual(hidden.organisms, ())
 
 
 if __name__ == "__main__":
