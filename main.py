@@ -238,7 +238,11 @@ def main(audio_path: str = None) -> None:
                 audio_input,
                 latest.ecosystem if latest else None,
             )
-            renderer.draw(geometry, debug_lines)
+            renderer.draw(
+                geometry,
+                debug_lines,
+                debug_features=latest.features if latest else None,
+            )
             if audio_input.is_finished():
                 running = False
     except AudioPlaybackError as exc:
@@ -289,6 +293,15 @@ def _build_debug_lines(
             f"zcr={features.zero_crossing_rate:.2f} density={features.spectral_density:.2f} "
             f"onset={'*' if features.beat else ' '}"
         )
+        if hasattr(features, "local_activity"):
+            bass, mid, high = features.local_activity
+            bass_n, mid_n, high_n = features.local_novelty
+            lines.append(
+                "LOCAL activity/novelty "
+                f"bass={bass:.2f}/{bass_n:.2f} "
+                f"mid={mid:.2f}/{mid_n:.2f} "
+                f"high={high:.2f}/{high_n:.2f}"
+            )
     if context:
         lines.append(
             "CONTEXT "

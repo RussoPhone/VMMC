@@ -118,6 +118,43 @@ class ContextualPipelineTests(unittest.TestCase):
             attack.attack_strength, sustained.attack_strength + 0.4
         )
 
+    def test_cqt_resolves_note_bins_across_several_octaves(self):
+        features = self._analyze_tone(440.0)
+
+        self.assertGreaterEqual(len(features.cqt_notes), 72)
+        peak = int(np.argmax(features.cqt_notes))
+        peak_frequency = features.cqt_frequencies[peak]
+        self.assertLess(abs(peak_frequency - 440.0), 30.0)
+
+    def test_subtle_high_note_creates_local_treble_novelty(self):
+        analyzer = AudioAnalyzer()
+        samplerate = 48_000
+        count = 1_600
+        for index in range(30):
+            analyzer.analyze(AudioFrame(np.zeros(count), index / 30, samplerate, index))
+
+        times = np.arange(count) / samplerate
+        subtle = .015 * np.sin(2 * np.pi * 5_000 * times)
+        detected = analyzer.analyze(AudioFrame(subtle, 1.0, samplerate, 30))
+
+        self.assertGreater(detected.local_novelty[2], .25)
+        self.assertGreater(detected.local_novelty[2], detected.local_novelty[0] + .2)
+
+    def test_local_novelty_adapts_to_sustained_note_in_its_own_region(self):
+        analyzer = AudioAnalyzer()
+        samplerate = 48_000
+        count = 1_600
+        times = np.arange(count) / samplerate
+        tone = .02 * np.sin(2 * np.pi * 5_000 * times)
+        first = analyzer.analyze(AudioFrame(tone, 0.0, samplerate, 0))
+        latest = first
+        for index in range(1, 60):
+            latest = analyzer.analyze(
+                AudioFrame(tone, index / 30, samplerate, index)
+            )
+
+        self.assertGreater(first.local_novelty[2], latest.local_novelty[2] + .15)
+
     def test_same_instant_has_different_context_after_different_histories(self):
         calm_memory = MusicalMemory()
         intense_memory = MusicalMemory()

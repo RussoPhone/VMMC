@@ -101,6 +101,32 @@ class RendererResizeTests(unittest.TestCase):
 
         renderer._print_debug_text.assert_not_called()
 
+    def test_draws_local_frequency_activity_and_novelty_without_font(self):
+        renderer = object.__new__(renderer_module.Renderer)
+        renderer.width = renderer.height = 800
+        renderer.screen = Mock()
+        renderer.screen.get_size.return_value = (800, 800)
+        renderer.font = None
+        renderer.headless = False
+        renderer.last_debug_lines = []
+        renderer.clock = Mock()
+        features = SimpleNamespace(
+            local_activity=(.2, .5, .8),
+            local_novelty=(.1, .4, .9),
+        )
+
+        with (
+            patch.object(renderer_module.pygame.draw, "polygon"),
+            patch.object(renderer_module.pygame.draw, "rect") as rect,
+            patch.object(renderer_module.pygame.display, "flip"),
+        ):
+            renderer.draw(
+                [(0, 0), (1, 0), (0, 1)],
+                debug_features=features,
+            )
+
+        self.assertGreaterEqual(rect.call_count, 9)
+
     def test_terminal_debug_is_throttled_when_values_change_each_frame(self):
         renderer = object.__new__(renderer_module.Renderer)
         renderer.width = 800

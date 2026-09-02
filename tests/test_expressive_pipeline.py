@@ -143,6 +143,16 @@ class ExpressivePipelineTests(unittest.TestCase):
         self.assertIn("prominence=0.80", text)
         self.assertIn("core_mass=0.60", text)
 
+        features.local_activity = (.1, .2, .3)
+        features.local_novelty = (.4, .5, .6)
+        text = "\n".join(
+            main._build_debug_lines(
+                features, context, gestures, morphology, "/tmp/song.wav", audio
+            )
+        )
+        self.assertIn("LOCAL", text)
+        self.assertIn("high=0.30/0.60", text)
+
     def test_optional_ecology_receives_every_interpreted_frame(self):
         frames = [SimpleNamespace(frame_index=0), SimpleNamespace(frame_index=1)]
         audio = SimpleNamespace(get_next_frame=lambda: frames.pop(0) if frames else None)

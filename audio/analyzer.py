@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from collections import deque
+import math
 import numpy as np 
 
 @dataclass
@@ -18,6 +20,10 @@ class AudioFeatures:
     harmonicity: float = 0.0
     attack_strength: float = 0.0
     spectral_spread: float = 0.0
+    cqt_notes: tuple = ()
+    cqt_frequencies: tuple = ()
+    local_activity: tuple = (0.0, 0.0, 0.0)
+    local_novelty: tuple = (0.0, 0.0, 0.0)
 
 class AudioAnalyzer:
     def __init__(
@@ -36,6 +42,11 @@ class AudioAnalyzer:
         self._last_beat_time = -1.0
         self._min_beat_interval = 0.20
         self._prev_rms = None
+        self._cqt_samplerate = None
+        self._cqt_buffer = np.zeros(0, dtype=np.float64)
+        self._cqt_frequencies = np.zeros(0, dtype=np.float64)
+        self._cqt_kernels = ()
+        self._local_history = tuple(deque(maxlen=45) for _ in range(3))
 
     def analyze(self, frame) -> AudioFeatures:
         samples = frame.samples
@@ -54,6 +65,8 @@ class AudioAnalyzer:
         harmonicity = max(0.0, min(1.0, 1.0 - flatness))
         attack_strength = self._compute_attack_strength(samples)
         spread = self._compute_spectral_spread(spectrum, sr, len(samples))
+        cqt_notes = self._compute_cqt(samples, sr)
+        local_activity, local_novelty = self._compute_local_novelty(cqt_notes)
 
         self._prev_spectrum = spectrum
 
@@ -73,7 +86,65 @@ class AudioAnalyzer:
             harmonicity=harmonicity,
             attack_strength=attack_strength,
             spectral_spread=spread,
+            cqt_notes=tuple(float(value) for value in cqt_notes),
+            cqt_frequencies=tuple(float(value) for value in self._cqt_frequencies),
+            local_activity=local_activity,
+            local_novelty=local_novelty,
         )
+
+    def _prepare_cqt(self, samplerate):
+        if samplerate == self._cqt_samplerate:
+            return
+        upper = min(8_000.0, samplerate * .475)
+        count = max(1, int(math.floor(12 * math.log2(upper / 55.0))) + 1)
+        self._cqt_frequencies = 55.0 * 2 ** (np.arange(count) / 12.0)
+        quality = 1.0 / (2 ** (1 / 12) - 1)
+        kernels = []
+        for frequency in self._cqt_frequencies:
+            length = max(32, int(math.ceil(quality * samplerate / frequency)))
+            window = np.hanning(length)
+            phase = np.exp(-2j * np.pi * frequency * np.arange(length) / samplerate)
+            kernels.append(window * phase / max(float(window.sum()), 1e-12))
+        self._cqt_kernels = tuple(kernels)
+        self._cqt_samplerate = samplerate
+        self._cqt_buffer = np.zeros(0, dtype=np.float64)
+        self._local_history = tuple(deque(maxlen=45) for _ in range(3))
+
+    def _compute_cqt(self, samples, samplerate):
+        self._prepare_cqt(samplerate)
+        maximum = max(len(kernel) for kernel in self._cqt_kernels)
+        incoming = np.asarray(samples, dtype=np.float64)
+        self._cqt_buffer = np.concatenate((self._cqt_buffer, incoming))[-maximum:]
+        values = []
+        for kernel in self._cqt_kernels:
+            available = min(len(kernel), len(self._cqt_buffer))
+            if available < 16:
+                values.append(0.0)
+                continue
+            partial = kernel[-available:]
+            normalization = max(float(np.sum(np.abs(partial))), 1e-12)
+            values.append(
+                abs(np.dot(self._cqt_buffer[-available:], partial)) / normalization
+            )
+        return np.asarray(values, dtype=np.float64)
+
+    def _compute_local_novelty(self, cqt_notes):
+        ranges = (self.bass_range, self.mid_range, self.treble_range)
+        floors = (.012, .008, .0035)
+        activity = []
+        novelty = []
+        for index, ((low, high), floor) in enumerate(zip(ranges, floors)):
+            mask = (self._cqt_frequencies >= low) & (self._cqt_frequencies < high)
+            region = cqt_notes[mask]
+            strongest = np.sort(region)[-3:] if len(region) else np.zeros(1)
+            current = 1.0 - math.exp(-float(np.mean(strongest)) * 18.0)
+            history = self._local_history[index]
+            baseline = float(np.median(history)) if history else 0.0
+            increase = max(0.0, current - baseline)
+            novelty.append(1.0 - math.exp(-increase / (floor + baseline * .5)))
+            activity.append(current)
+            history.append(current)
+        return tuple(activity), tuple(novelty)
     def _compute_amplitude(self, samples: np.ndarray) -> float:
         rms = float(np.sqrt(np.mean(samples ** 2) + 1e-12))
         return min(1.0, rms * 4.0)

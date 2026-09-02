@@ -82,6 +82,7 @@ class Renderer:
         geometry,
         debug_lines: Optional[List[str]] = None,
         fps_limit: int = 60,
+        debug_features=None,
     ) -> None:
         if self.headless or self.screen is None:
             self._maybe_print_debug(debug_lines)
@@ -153,6 +154,8 @@ class Renderer:
                         width=0,
                     )
 
+            self._draw_local_frequency_debug(debug_features)
+
             # Desenha HUD se font estiver disponivel
             if debug_lines and self.font:
                 try:
@@ -169,6 +172,30 @@ class Renderer:
             print(f"[AVISO] Erro ao desenhar: {e}")
 
         self.clock.tick(fps_limit)
+
+    def _draw_local_frequency_debug(self, features):
+        if features is None or not hasattr(features, "local_activity"):
+            return
+        activity = features.local_activity
+        novelty = features.local_novelty
+        colors = ((238, 112, 76), (74, 205, 174), (170, 124, 255))
+        width = min(150, max(75, self.width // 5))
+        left = self.width - width - 18
+        top = 18
+        for index, color in enumerate(colors):
+            y = top + index * 18
+            pygame.draw.rect(self.screen, (28, 30, 42), (left, y, width, 10))
+            pygame.draw.rect(
+                self.screen,
+                color,
+                (left, y, round(width * max(0.0, min(1.0, activity[index]))), 10),
+            )
+            novelty_width = round(width * max(0.0, min(1.0, novelty[index])))
+            pygame.draw.rect(
+                self.screen,
+                (245, 245, 255),
+                (left, y + 12, novelty_width, 2),
+            )
 
     def _screen_points(self, vertices):
         return [
