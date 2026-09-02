@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 from geometry.ecosystem_geometry import EcosystemGeometryBuilder
 from geometry.snapshot import Fragment
-from state.ecosystem import EcosystemState, OrganismState, RelationState
+from state.ecosystem import (
+    EcosystemState,
+    OrganismState,
+    RelationState,
+    VocalEffect,
+)
 from state.visual_genome import VisualGenome
 
 
@@ -84,6 +89,45 @@ class EcosystemGeometryTests(unittest.TestCase):
         radii = [math.hypot(x, y) for x, y in body.vertices]
 
         self.assertGreater(max(radii) / min(radii), 1.7)
+
+    def test_vocal_roughness_and_tension_deform_without_changing_genome(self):
+        genome = VisualGenome(0.4, 0.4, 0.1, 0.05, 0.5, 0.7, 0.5, 0.55, 0.5, 0.6)
+        calm = EcosystemState(
+            (OrganismState(1, 0.4, 0.0, 1.0, 0.8, genome),),
+            (),
+            0.5,
+        )
+        vocal = EcosystemState(
+            (
+                OrganismState(
+                    1,
+                    0.4,
+                    0.0,
+                    1.0,
+                    0.8,
+                    genome,
+                    vocal_effect=VocalEffect(1.0, 0.2, 0.9, 0.9),
+                ),
+            ),
+            (),
+            0.5,
+        )
+        builder = EcosystemGeometryBuilder(vertex_count=48)
+
+        calm_body = builder.build(calm, 0.7).organisms[0]
+        vocal_body = builder.build(vocal, 0.7).organisms[0]
+        calm_radii = [
+            math.dist((0.4, 0.0), point) for point in calm_body.vertices
+        ]
+        vocal_radii = [
+            math.dist((0.4, 0.0), point) for point in vocal_body.vertices
+        ]
+
+        self.assertGreater(
+            max(vocal_radii) - min(vocal_radii),
+            max(calm_radii) - min(calm_radii),
+        )
+        self.assertEqual(vocal.organisms[0].genome, genome)
 
 
 if __name__ == "__main__":
