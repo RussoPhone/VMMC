@@ -30,6 +30,7 @@ class EcosystemState:
     organisms: tuple[OrganismState, ...]
     relations: tuple[RelationState, ...]
     core_cohesion: float
+    stored_body_count: int = 0
 
 
 @dataclass
@@ -52,8 +53,14 @@ class EcosystemController:
         self._bodies = {}
         self._relations = {}
         self._core_cohesion = 1.0
+        self._cycle_index = None
 
-    def update(self, presences, dt, global_cohesion=0.5):
+    def update(self, presences, dt, global_cohesion=0.5, cycle_index=0):
+        if cycle_index != self._cycle_index:
+            self._cycle_index = cycle_index
+            self._bodies.clear()
+            self._relations.clear()
+            self._core_cohesion = 1.0
         dt = max(0.0, min(0.1, dt))
         visible = sorted(presences, key=lambda item: item.identifier)
         for presence in visible:
@@ -90,7 +97,12 @@ class EcosystemController:
             )
             for item in visible
         )
-        return EcosystemState(organisms, tuple(relation_states), self._core_cohesion)
+        return EcosystemState(
+            organisms,
+            tuple(relation_states),
+            self._core_cohesion,
+            len(self._bodies),
+        )
 
     def _update_relation(self, left, right, dt):
         key = tuple(sorted((left.identifier, right.identifier)))

@@ -96,6 +96,7 @@ def drain_expressive_frames(
                 presences,
                 dt,
                 global_cohesion=context.regimes.stability,
+                cycle_index=context.cycle_index,
             )
             if ecosystem_controller is not None
             else None

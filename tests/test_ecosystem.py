@@ -39,6 +39,18 @@ class EcosystemTests(unittest.TestCase):
             merged_distance + .1,
         )
 
+    def test_new_musical_cycle_releases_previous_physical_state(self):
+        ecosystem = EcosystemController()
+        for cycle in range(20):
+            state = ecosystem.update(
+                (self._presence(cycle + 1, (cycle % 4) * .2),),
+                .1,
+                cycle_index=cycle,
+            )
+
+        self.assertEqual(state.stored_body_count, 1)
+        self.assertEqual(state.relations, ())
+
     @staticmethod
     def _presence(identifier, brightness):
         return PresenceEvidence(identifier, SoundSignature(brightness, .2, .8, .3, .5), PresenceStage.CONFIRMED, .9, .7, 2, 3.0, 3.0)

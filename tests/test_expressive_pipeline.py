@@ -145,12 +145,12 @@ class ExpressivePipelineTests(unittest.TestCase):
         frames = [SimpleNamespace(frame_index=0), SimpleNamespace(frame_index=1)]
         audio = SimpleNamespace(get_next_frame=lambda: frames.pop(0) if frames else None)
         analyzer = SimpleNamespace(analyze=lambda frame: SimpleNamespace(timestamp=frame.frame_index/30, index=frame.frame_index))
-        memory = SimpleNamespace(update=lambda features: SimpleNamespace(index=features.index, regimes=SimpleNamespace(stability=.6)))
+        memory = SimpleNamespace(update=lambda features: SimpleNamespace(index=features.index, regimes=SimpleNamespace(stability=.6), cycle_index=0))
         gestures = SimpleNamespace(update=lambda context, dt: SimpleNamespace(index=context.index))
         morphology = SimpleNamespace(update=lambda context, value, dt: SimpleNamespace(index=context.index))
         seen = []
         tracker = SimpleNamespace(update=lambda context, timestamp: (context.index,))
-        ecosystem = SimpleNamespace(update=lambda presences, dt, global_cohesion: seen.append(presences) or SimpleNamespace(organisms=presences))
+        ecosystem = SimpleNamespace(update=lambda presences, dt, global_cohesion, cycle_index: seen.append(presences) or SimpleNamespace(organisms=presences))
 
         result = main.drain_expressive_frames(audio, analyzer, memory, gestures, morphology, presence_tracker=tracker, ecosystem_controller=ecosystem)
 
