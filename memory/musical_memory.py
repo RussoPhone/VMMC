@@ -1,6 +1,8 @@
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import fmean, pstdev
+
+from memory.adaptive_landscape import AdaptiveLandscape, RelativeFeatures
 
 
 def _clamp(value, low=0.0, high=1.0):
@@ -23,6 +25,14 @@ class MusicalContext:
     zero_crossing_rate: float
     spectral_density: float
     onset: bool
+    relative: RelativeFeatures = field(
+        default_factory=lambda: RelativeFeatures(0.0, 0.0, 0.0, 0.0, 0.0)
+    )
+    signature: "SoundSignature" = field(
+        default_factory=lambda: SoundSignature(0.0, 0.0, 0.0, 0.0, 0.0)
+    )
+    signature_continuity: float = 0.0
+    prominence: float = 0.0
 
     @property
     def energy_average(self):
@@ -38,6 +48,15 @@ class _MemorySample:
     zcr: float
     density: float
     spectral_stability: float
+
+
+@dataclass(frozen=True)
+class SoundSignature:
+    brightness: float
+    noisiness: float
+    harmonicity: float
+    attack: float
+    density: float
 
 
 class MusicalMemory:
@@ -57,8 +76,20 @@ class MusicalMemory:
         self._smoothed_activity = 0.0
         self._tension = 0.0
         self._persistence = 0.0
+        self._landscape = AdaptiveLandscape()
+        self._signature_history = deque(maxlen=360)
 
     def update(self, features) -> MusicalContext:
+        relative = self._landscape.update(features)
+        signature = SoundSignature(
+            brightness=_clamp(getattr(features, "spectral_centroid", 0.0)),
+            noisiness=_clamp(getattr(features, "spectral_flatness", 0.0)),
+            harmonicity=_clamp(getattr(features, "harmonicity", 0.0)),
+            attack=_clamp(getattr(features, "attack_strength", 0.0)),
+            density=_clamp(getattr(features, "spectral_density", 0.0)),
+        )
+        signature_continuity = self._signature_continuity(signature)
+
         self._smoothed_activity += (
             features.spectral_flux - self._smoothed_activity
         ) * self.activity_smoothing
@@ -118,6 +149,17 @@ class MusicalMemory:
             persistence_target - self._persistence
         ) * persistence_rate
 
+        prominence = _clamp(
+            max(0.0, relative.energy) * 0.25
+            + max(0.0, relative.brightness) * 0.10
+            + max(0.0, relative.texture) * 0.15
+            + max(0.0, relative.activity) * 0.20
+            + novelty * 0.15
+            + signature.attack * 0.10
+            + signature_continuity * 0.05
+        )
+        self._signature_history.append(signature)
+
         return MusicalContext(
             energy=sample.energy,
             short_energy=_clamp(short_energy),
@@ -133,6 +175,25 @@ class MusicalMemory:
             zero_crossing_rate=_clamp(fmean(item.zcr for item in short)),
             spectral_density=_clamp(fmean(item.density for item in short)),
             onset=bool(features.beat),
+            relative=relative,
+            signature=signature,
+            signature_continuity=signature_continuity,
+            prominence=prominence,
+        )
+
+    def _signature_continuity(self, signature: SoundSignature) -> float:
+        if not self._signature_history:
+            return 0.0
+        recent = list(self._signature_history)[-90:]
+        return max(1.0 - self._signature_distance(signature, item) for item in recent)
+
+    @staticmethod
+    def _signature_distance(left: SoundSignature, right: SoundSignature) -> float:
+        return fmean(
+            abs(left_value - right_value)
+            for left_value, right_value in zip(
+                vars(left).values(), vars(right).values()
+            )
         )
 
     def _prune(self, current_timestamp: float) -> None:
