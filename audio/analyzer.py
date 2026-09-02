@@ -14,6 +14,10 @@ class AudioFeatures:
     zero_crossing_rate: float = 0.0
     spectral_density: float = 0.0
     spectral_stability: float = 0.0
+    spectral_flatness: float = 0.0
+    harmonicity: float = 0.0
+    attack_strength: float = 0.0
+    spectral_spread: float = 0.0
 
 class AudioAnalyzer:
     def __init__(
@@ -31,6 +35,7 @@ class AudioAnalyzer:
         self._flux_history_max = 43
         self._last_beat_time = -1.0
         self._min_beat_interval = 0.20
+        self._prev_rms = None
 
     def analyze(self, frame) -> AudioFeatures:
         samples = frame.samples
@@ -45,6 +50,10 @@ class AudioAnalyzer:
         zero_crossing_rate = self._compute_zero_crossing_rate(samples)
         density = self._compute_spectral_density(spectrum)
         stability = self._compute_spectral_stability(spectrum)
+        flatness = self._compute_spectral_flatness(spectrum)
+        harmonicity = max(0.0, min(1.0, 1.0 - flatness))
+        attack_strength = self._compute_attack_strength(samples)
+        spread = self._compute_spectral_spread(spectrum, sr, len(samples))
 
         self._prev_spectrum = spectrum
 
@@ -60,6 +69,10 @@ class AudioAnalyzer:
             zero_crossing_rate=zero_crossing_rate,
             spectral_density=density,
             spectral_stability=stability,
+            spectral_flatness=flatness,
+            harmonicity=harmonicity,
+            attack_strength=attack_strength,
+            spectral_spread=spread,
         )
     def _compute_amplitude(self, samples: np.ndarray) -> float:
         rms = float(np.sqrt(np.mean(samples ** 2) + 1e-12))
@@ -118,6 +131,33 @@ class AudioAnalyzer:
         distance = float(np.sum(np.abs(spectrum - self._prev_spectrum)))
         magnitude = float(np.sum(spectrum) + np.sum(self._prev_spectrum) + 1e-12)
         return max(0.0, min(1.0, 1.0 - distance / magnitude))
+
+    def _compute_spectral_flatness(self, spectrum: np.ndarray) -> float:
+        if len(spectrum) == 0 or float(np.max(spectrum)) <= 1e-12:
+            return 0.0
+        magnitudes = spectrum + 1e-12
+        geometric_mean = float(np.exp(np.mean(np.log(magnitudes))))
+        arithmetic_mean = float(np.mean(magnitudes))
+        return max(0.0, min(1.0, geometric_mean / arithmetic_mean))
+
+    def _compute_attack_strength(self, samples: np.ndarray) -> float:
+        rms = float(np.sqrt(np.mean(samples ** 2) + 1e-12))
+        if self._prev_rms is None:
+            attack = 0.0
+        else:
+            attack = max(0.0, min(1.0, (rms - self._prev_rms) * 8.0))
+        self._prev_rms = rms
+        return attack
+
+    def _compute_spectral_spread(self, spectrum, sr, n_samples) -> float:
+        total = float(np.sum(spectrum))
+        if total <= 1e-12:
+            return 0.0
+        freqs = np.fft.rfftfreq(n_samples, d=1.0 / sr)
+        centroid = float(np.sum(freqs * spectrum) / total)
+        variance = float(np.sum(((freqs - centroid) ** 2) * spectrum) / total)
+        spread_hz = float(np.sqrt(max(0.0, variance)))
+        return max(0.0, min(1.0, spread_hz / (sr * 0.5)))
 
     def _detect_beat(self, flux: float, timestamp: float) -> bool:
         self._flux_history.append(flux)

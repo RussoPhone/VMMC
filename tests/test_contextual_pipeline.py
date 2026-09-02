@@ -72,10 +72,51 @@ class ContextualPipelineTests(unittest.TestCase):
                 features.mid,
                 features.treble,
                 features.spectral_flux,
+                features.spectral_flatness,
+                features.harmonicity,
+                features.attack_strength,
+                features.spectral_spread,
             ):
                 self.assertTrue(math.isfinite(value))
                 self.assertGreaterEqual(value, 0.0)
                 self.assertLessEqual(value, 1.0)
+
+    def test_tone_is_more_harmonic_and_less_flat_than_seeded_noise(self):
+        samplerate = 48_000
+        count = 1_600
+        times = np.arange(count) / samplerate
+        tone = 0.2 * np.sin(2.0 * np.pi * 440.0 * times)
+        noise = np.random.default_rng(7).normal(0.0, 0.2, count)
+
+        tone_features = AudioAnalyzer().analyze(
+            AudioFrame(tone, 0.0, samplerate, 0)
+        )
+        noise_features = AudioAnalyzer().analyze(
+            AudioFrame(noise, 0.0, samplerate, 0)
+        )
+
+        self.assertGreater(
+            tone_features.harmonicity, noise_features.harmonicity + 0.25
+        )
+        self.assertLess(
+            tone_features.spectral_flatness,
+            noise_features.spectral_flatness - 0.25,
+        )
+        self.assertLess(
+            tone_features.spectral_spread,
+            noise_features.spectral_spread - 0.1,
+        )
+
+    def test_sudden_rise_has_more_attack_than_steady_level(self):
+        analyzer = AudioAnalyzer()
+
+        analyzer.analyze(self._tone_frame(0.02, 0.0, 0))
+        attack = analyzer.analyze(self._tone_frame(0.4, 1.0 / 30.0, 1))
+        sustained = analyzer.analyze(self._tone_frame(0.4, 2.0 / 30.0, 2))
+
+        self.assertGreater(
+            attack.attack_strength, sustained.attack_strength + 0.4
+        )
 
     def test_same_instant_has_different_context_after_different_histories(self):
         calm_memory = MusicalMemory()
@@ -141,6 +182,15 @@ class ContextualPipelineTests(unittest.TestCase):
         count = 1_600
         samples = np.sin(2.0 * np.pi * frequency * np.arange(count) / samplerate)
         return AudioAnalyzer().analyze(AudioFrame(samples, 0.0, samplerate, 0))
+
+    @staticmethod
+    def _tone_frame(amplitude, timestamp, frame_index):
+        samplerate = 48_000
+        count = 1_600
+        samples = amplitude * np.sin(
+            2.0 * np.pi * 440.0 * np.arange(count) / samplerate
+        )
+        return AudioFrame(samples, timestamp, samplerate, frame_index)
 
 
 if __name__ == "__main__":
