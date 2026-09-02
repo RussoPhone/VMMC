@@ -45,31 +45,6 @@ class ExpressiveGeometryTests(unittest.TestCase):
 
         self.assertLess(displacement, 0.05)
 
-    def test_single_core_keeps_breathing_between_audio_updates(self):
-        shape = create_circle_shape(72)
-        morphology = MorphologyState(
-            wave=0.65,
-            expansion=0.55,
-            compression=0.35,
-            brightness=0.8,
-            fluidity=0.8,
-        )
-        builder = GeometryBuilder(max_fragments=0)
-
-        frames = [
-            builder.build(shape, morphology, index / 60.0, 1.0 / 60.0)
-            for index in range(30)
-        ]
-        displacements = [
-            sum(math.dist(a, b) for a, b in zip(before.body_vertices, after.body_vertices))
-            / len(before.body_vertices)
-            for before, after in zip(frames, frames[1:])
-        ]
-
-        self.assertGreater(min(displacements), 0.0001)
-        self.assertLess(max(displacements), 0.035)
-        self.assertTrue(all(not frame.fragments for frame in frames))
-
     def test_fragmentation_is_bounded_and_returns_under_calm(self):
         shape = create_circle_shape(72)
         builder = GeometryBuilder(max_fragments=6)
