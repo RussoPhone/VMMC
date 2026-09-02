@@ -155,6 +155,30 @@ class ContextualPipelineTests(unittest.TestCase):
 
         self.assertGreater(first.local_novelty[2], latest.local_novelty[2] + .15)
 
+    def test_harmonic_voice_like_signal_exceeds_noise_vocal_evidence(self):
+        samplerate = 48_000
+        count = 1_600
+        times = np.arange(count) / samplerate
+        voiced = sum(
+            (1 / harmonic)
+            * np.sin(2 * np.pi * 180 * harmonic * times)
+            for harmonic in range(1, 13)
+        ) * .08
+        noise = np.random.default_rng(11).normal(0, .08, count)
+
+        voiced_features = AudioAnalyzer().analyze(
+            AudioFrame(voiced, 0.0, samplerate, 0)
+        )
+        noise_features = AudioAnalyzer().analyze(
+            AudioFrame(noise, 0.0, samplerate, 0)
+        )
+
+        self.assertGreater(
+            voiced_features.vocal_evidence,
+            noise_features.vocal_evidence + .2,
+        )
+        self.assertGreater(voiced_features.vocal_intensity, .05)
+
     def test_same_instant_has_different_context_after_different_histories(self):
         calm_memory = MusicalMemory()
         intense_memory = MusicalMemory()

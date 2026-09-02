@@ -7,6 +7,7 @@ Retorna lista de eventos pygame para o main processar atalhos (ex: 'O' abrir arq
 """
 
 from typing import List, Optional, Sequence, Tuple, Union
+from collections import deque
 import time
 
 import pygame
@@ -35,6 +36,7 @@ class Renderer:
         self.last_debug_lines = []
         self._last_debug_print_time = float("-inf")
         self._debug_print_interval = 0.25
+        self._vocal_history = deque(maxlen=240)
 
         # Tenta inicializar display
         try:
@@ -83,6 +85,7 @@ class Renderer:
         debug_lines: Optional[List[str]] = None,
         fps_limit: int = 60,
         debug_features=None,
+        debug_context=None,
     ) -> None:
         if self.headless or self.screen is None:
             self._maybe_print_debug(debug_lines)
@@ -155,6 +158,7 @@ class Renderer:
                     )
 
             self._draw_local_frequency_debug(debug_features)
+            self._draw_vocal_timeline(debug_context)
 
             # Desenha HUD se font estiver disponivel
             if debug_lines and self.font:
@@ -196,6 +200,36 @@ class Renderer:
                 (245, 245, 255),
                 (left, y + 12, novelty_width, 2),
             )
+
+    def _draw_vocal_timeline(self, context):
+        if context is None or not hasattr(context, "vocal_activity"):
+            return
+        history = getattr(self, "_vocal_history", None)
+        if history is None:
+            history = self._vocal_history = deque(maxlen=240)
+        history.append(
+            (
+                max(0.0, min(1.0, context.vocal_activity)),
+                max(0.0, min(1.0, context.vocal_presence)),
+            )
+        )
+        width = min(240, max(120, self.width // 3))
+        height = 54
+        left, top = 18, self.height - height - 18
+        pygame.draw.rect(self.screen, (20, 22, 34), (left, top, width, height))
+        if len(history) < 2:
+            return
+        samples = list(history)[-width:]
+        step = width / max(1, len(samples) - 1)
+        for channel, color in ((0, (80, 225, 210)), (1, (235, 120, 255))):
+            points = [
+                (
+                    round(left + index * step),
+                    round(top + height - value[channel] * (height - 4) - 2),
+                )
+                for index, value in enumerate(samples)
+            ]
+            pygame.draw.lines(self.screen, color, False, points, 2)
 
     def _screen_points(self, vertices):
         return [

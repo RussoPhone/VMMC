@@ -127,6 +127,29 @@ class RendererResizeTests(unittest.TestCase):
 
         self.assertGreaterEqual(rect.call_count, 9)
 
+    def test_draws_vocal_activity_and_presence_timeline_without_font(self):
+        renderer = object.__new__(renderer_module.Renderer)
+        renderer.width = renderer.height = 800
+        renderer.screen = Mock()
+        renderer.screen.get_size.return_value = (800, 800)
+        renderer.font = None
+        renderer.headless = False
+        renderer.last_debug_lines = []
+        renderer.clock = Mock()
+        context = SimpleNamespace(vocal_activity=.65, vocal_presence=.8)
+
+        with (
+            patch.object(renderer_module.pygame.draw, "polygon"),
+            patch.object(renderer_module.pygame.draw, "rect"),
+            patch.object(renderer_module.pygame.draw, "lines") as lines,
+            patch.object(renderer_module.pygame.display, "flip"),
+        ):
+            renderer.draw([(0, 0), (1, 0), (0, 1)], debug_context=context)
+            context.vocal_activity = .3
+            renderer.draw([(0, 0), (1, 0), (0, 1)], debug_context=context)
+
+        self.assertEqual(lines.call_count, 2)
+
     def test_terminal_debug_is_throttled_when_values_change_each_frame(self):
         renderer = object.__new__(renderer_module.Renderer)
         renderer.width = 800

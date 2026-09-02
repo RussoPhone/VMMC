@@ -350,6 +350,35 @@ class MusicalContextTests(unittest.TestCase):
         self.assertEqual(transitioned.cycle_index, 0)
         self.assertGreater(transitioned.regimes.transition, 0.2)
 
+    def test_vocal_presence_survives_brief_gaps_and_changing_evidence(self):
+        memory = MusicalMemory()
+        context = None
+        for index in range(45):
+            evidence = .8 if index % 3 else .55
+            context = memory.update(
+                self._features(
+                    index / 30,
+                    energy=.3,
+                    vocal_evidence=evidence,
+                    vocal_intensity=.65,
+                )
+            )
+        active_presence = context.vocal_presence
+
+        for index in range(8):
+            context = memory.update(
+                self._features(
+                    1.5 + index / 30,
+                    energy=.2,
+                    vocal_evidence=0.0,
+                    vocal_intensity=0.0,
+                )
+            )
+
+        self.assertGreater(active_presence, .55)
+        self.assertGreater(context.vocal_presence, .4)
+        self.assertLess(context.vocal_activity, context.vocal_presence)
+
     @staticmethod
     def _features(
         timestamp,
@@ -362,6 +391,8 @@ class MusicalContextTests(unittest.TestCase):
         harmonicity=0.0,
         density=0.3,
         attack=0.0,
+        vocal_evidence=0.0,
+        vocal_intensity=0.0,
     ):
         return AudioFeatures(
             timestamp=timestamp,
@@ -378,6 +409,8 @@ class MusicalContextTests(unittest.TestCase):
             spectral_flatness=flatness,
             harmonicity=harmonicity,
             attack_strength=attack,
+            vocal_evidence=vocal_evidence,
+            vocal_intensity=vocal_intensity,
         )
 
 

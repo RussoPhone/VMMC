@@ -85,6 +85,8 @@ class ExpressivePipelineTests(unittest.TestCase):
             cycle_phase=CyclePhase.QUIETING,
             cycle_index=2,
             silence_duration=4.5,
+            vocal_activity=.45,
+            vocal_presence=.75,
         )
         gestures = SimpleNamespace(
             pressure=0.8,
@@ -142,6 +144,7 @@ class ExpressivePipelineTests(unittest.TestCase):
         self.assertIn("silence=4.50", text)
         self.assertIn("prominence=0.80", text)
         self.assertIn("core_mass=0.60", text)
+        self.assertIn("VOICE intensity=0.45 presence=0.75", text)
 
         features.local_activity = (.1, .2, .3)
         features.local_novelty = (.4, .5, .6)

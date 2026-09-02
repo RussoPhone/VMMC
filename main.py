@@ -242,6 +242,7 @@ def main(audio_path: str = None) -> None:
                 geometry,
                 debug_lines,
                 debug_features=latest.features if latest else None,
+                debug_context=latest.context if latest else None,
             )
             if audio_input.is_finished():
                 running = False
@@ -303,6 +304,11 @@ def _build_debug_lines(
                 f"high={high:.2f}/{high_n:.2f}"
             )
     if context:
+        lines.append(
+            "VOICE "
+            f"intensity={getattr(context, 'vocal_activity', 0.0):.2f} "
+            f"presence={getattr(context, 'vocal_presence', 0.0):.2f}"
+        )
         lines.append(
             "CONTEXT "
             f"short={context.short_energy:.2f} medium={context.medium_energy:.2f} "

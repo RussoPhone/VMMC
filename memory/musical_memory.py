@@ -46,6 +46,8 @@ class MusicalContext:
     cycle_phase: CyclePhase = CyclePhase.LISTENING
     cycle_index: int = 0
     silence_duration: float = 0.0
+    vocal_activity: float = 0.0
+    vocal_presence: float = 0.0
 
     @property
     def energy_average(self):
@@ -113,6 +115,8 @@ class MusicalMemory:
         self._silence_started_at = None
         self._silence_duration = 0.0
         self._silence_threshold = None
+        self._vocal_activity = 0.0
+        self._vocal_presence = 0.0
 
     def update(self, features) -> MusicalContext:
         self._advance_cycle(features)
@@ -126,6 +130,16 @@ class MusicalMemory:
             density=_clamp(getattr(features, "spectral_density", 0.0)),
         )
         signature_continuity = self._signature_continuity(signature)
+        vocal_evidence = _clamp(getattr(features, "vocal_evidence", 0.0))
+        vocal_target = _clamp(getattr(features, "vocal_intensity", 0.0))
+        activity_rate = .42 if vocal_target > self._vocal_activity else .16
+        self._vocal_activity += (
+            vocal_target - self._vocal_activity
+        ) * activity_rate
+        presence_rate = .18 if vocal_evidence > self._vocal_presence else .025
+        self._vocal_presence += (
+            vocal_evidence - self._vocal_presence
+        ) * presence_rate
 
         self._smoothed_activity += (
             features.spectral_flux - self._smoothed_activity
@@ -241,6 +255,8 @@ class MusicalMemory:
             cycle_phase=self._cycle_phase,
             cycle_index=self._cycle_index,
             silence_duration=self._silence_duration,
+            vocal_activity=_clamp(self._vocal_activity),
+            vocal_presence=_clamp(self._vocal_presence),
         )
 
     def _advance_cycle(self, features) -> None:
@@ -292,6 +308,8 @@ class MusicalMemory:
         self._silence_started_at = None
         self._silence_duration = 0.0
         self._silence_threshold = None
+        self._vocal_activity = 0.0
+        self._vocal_presence = 0.0
 
     def _smooth_regimes(self, targets: RegimeWeights) -> RegimeWeights:
         values = {}

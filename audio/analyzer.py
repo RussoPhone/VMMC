@@ -24,6 +24,8 @@ class AudioFeatures:
     cqt_frequencies: tuple = ()
     local_activity: tuple = (0.0, 0.0, 0.0)
     local_novelty: tuple = (0.0, 0.0, 0.0)
+    vocal_evidence: float = 0.0
+    vocal_intensity: float = 0.0
 
 class AudioAnalyzer:
     def __init__(
@@ -67,6 +69,13 @@ class AudioAnalyzer:
         spread = self._compute_spectral_spread(spectrum, sr, len(samples))
         cqt_notes = self._compute_cqt(samples, sr)
         local_activity, local_novelty = self._compute_local_novelty(cqt_notes)
+        vocal_evidence, vocal_intensity = self._compute_vocal_evidence(
+            cqt_notes,
+            amplitude,
+            flatness,
+            centroid,
+            local_activity,
+        )
 
         self._prev_spectrum = spectrum
 
@@ -90,6 +99,8 @@ class AudioAnalyzer:
             cqt_frequencies=tuple(float(value) for value in self._cqt_frequencies),
             local_activity=local_activity,
             local_novelty=local_novelty,
+            vocal_evidence=vocal_evidence,
+            vocal_intensity=vocal_intensity,
         )
 
     def _prepare_cqt(self, samplerate):
@@ -145,6 +156,52 @@ class AudioAnalyzer:
             activity.append(current)
             history.append(current)
         return tuple(activity), tuple(novelty)
+
+    def _compute_vocal_evidence(
+        self,
+        cqt_notes,
+        amplitude,
+        flatness,
+        centroid,
+        local_activity,
+    ):
+        candidates = np.flatnonzero(
+            (self._cqt_frequencies >= 80) & (self._cqt_frequencies <= 350)
+        )
+        weights = (1.0, .8, .62, .48, .36, .28)
+        harmonic_score = 0.0
+        peak = max(float(np.max(cqt_notes)), 1e-12)
+        for candidate in candidates:
+            fundamental = self._cqt_frequencies[candidate]
+            harmonic_sum = 0.0
+            weight_sum = 0.0
+            for harmonic, weight in enumerate(weights, start=1):
+                target = fundamental * harmonic
+                if target > 4_000:
+                    break
+                note = int(np.argmin(np.abs(self._cqt_frequencies - target)))
+                harmonic_sum += float(cqt_notes[note]) * weight
+                weight_sum += weight
+            harmonic_score = max(
+                harmonic_score,
+                harmonic_sum / max(peak * weight_sum, 1e-12),
+            )
+        harmonic_score = max(0.0, min(1.0, harmonic_score))
+        voice_center = math.exp(-((centroid - .075) / .095) ** 2)
+        tonal = 1.0 - flatness
+        gate = 1.0 - math.exp(-amplitude * 12.0)
+        evidence = gate * (
+            tonal * .45
+            + harmonic_score * .28
+            + local_activity[1] * .17
+            + voice_center * .10
+        )
+        evidence = max(0.0, min(1.0, evidence))
+        intensity = evidence * min(
+            1.0,
+            local_activity[1] * .72 + amplitude * 1.4,
+        )
+        return evidence, max(0.0, min(1.0, intensity))
     def _compute_amplitude(self, samples: np.ndarray) -> float:
         rms = float(np.sqrt(np.mean(samples ** 2) + 1e-12))
         return min(1.0, rms * 4.0)
