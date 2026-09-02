@@ -33,6 +33,9 @@ class MusicalContext:
     )
     signature_continuity: float = 0.0
     prominence: float = 0.0
+    regimes: "RegimeWeights" = field(
+        default_factory=lambda: RegimeWeights(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    )
 
     @property
     def energy_average(self):
@@ -59,6 +62,17 @@ class SoundSignature:
     density: float
 
 
+@dataclass(frozen=True)
+class RegimeWeights:
+    stability: float
+    building: float
+    suspension: float
+    rupture: float
+    climax: float
+    release: float
+    transition: float
+
+
 class MusicalMemory:
     def __init__(
         self,
@@ -78,8 +92,11 @@ class MusicalMemory:
         self._persistence = 0.0
         self._landscape = AdaptiveLandscape()
         self._signature_history = deque(maxlen=360)
+        self._previous_prominence = 0.0
+        self._regimes = RegimeWeights(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     def update(self, features) -> MusicalContext:
+        previous_tension = self._tension
         relative = self._landscape.update(features)
         signature = SoundSignature(
             brightness=_clamp(getattr(features, "spectral_centroid", 0.0)),
@@ -158,6 +175,27 @@ class MusicalMemory:
             + signature.attack * 0.10
             + signature_continuity * 0.05
         )
+        regime_targets = RegimeWeights(
+            stability=_clamp(stability * (1.0 - novelty)),
+            building=_clamp(
+                max(0.0, energy_trend) + max(0.0, activity_trend) * 0.6
+            ),
+            suspension=_clamp(self._persistence * (1.0 - sample.activity) * 0.8),
+            rupture=_clamp(
+                novelty * 0.6
+                + max(0.0, prominence - self._previous_prominence)
+            ),
+            climax=_clamp(self._tension * prominence),
+            release=_clamp(
+                max(0.0, previous_tension - self._tension) * 2.0
+                + self._persistence * (1.0 - sample.energy) * 0.3
+            ),
+            transition=_clamp(
+                (1.0 - signature_continuity) * 0.6 + novelty * 0.4
+            ),
+        )
+        self._regimes = self._smooth_regimes(regime_targets)
+        self._previous_prominence = prominence
         self._signature_history.append(signature)
 
         return MusicalContext(
@@ -179,7 +217,21 @@ class MusicalMemory:
             signature=signature,
             signature_continuity=signature_continuity,
             prominence=prominence,
+            regimes=self._regimes,
         )
+
+    def _smooth_regimes(self, targets: RegimeWeights) -> RegimeWeights:
+        values = {}
+        for name, target in vars(targets).items():
+            current = getattr(self._regimes, name)
+            attack_rate = 0.18
+            if name == "rupture":
+                attack_rate = 0.35
+            elif name == "transition":
+                attack_rate = 0.5
+            rate = attack_rate if target > current else 0.04
+            values[name] = _clamp(current + (target - current) * rate)
+        return RegimeWeights(**values)
 
     def _signature_continuity(self, signature: SoundSignature) -> float:
         if not self._signature_history:

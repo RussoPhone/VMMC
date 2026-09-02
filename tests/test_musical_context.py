@@ -149,6 +149,110 @@ class MusicalContextTests(unittest.TestCase):
             self.assertGreaterEqual(value, 0.0)
             self.assertLessEqual(value, 1.0)
 
+    def test_prepared_crescendo_builds_more_than_isolated_spike(self):
+        prepared_memory = MusicalMemory()
+        isolated_memory = MusicalMemory()
+        prepared = None
+        for index in range(180):
+            timestamp = index / 30.0
+            energy = 0.1 + 0.7 * index / 179
+            prepared = prepared_memory.update(
+                self._features(
+                    timestamp,
+                    energy=energy,
+                    flux=energy * 0.5,
+                    stability=0.7,
+                )
+            )
+            isolated_energy = 0.8 if index == 179 else 0.1
+            isolated = isolated_memory.update(
+                self._features(
+                    timestamp,
+                    energy=isolated_energy,
+                    flux=0.4 if index == 179 else 0.02,
+                    stability=0.7,
+                )
+            )
+
+        self.assertGreater(
+            prepared.regimes.building, isolated.regimes.building + 0.2
+        )
+        self.assertGreater(prepared.tension, isolated.tension)
+
+    def test_timbre_break_creates_rupture_and_transition(self):
+        stable_memory = MusicalMemory()
+        breaking_memory = MusicalMemory()
+        for index in range(120):
+            sample = self._features(
+                index / 30.0,
+                energy=0.3,
+                centroid=0.2,
+                flatness=0.1,
+                harmonicity=0.9,
+                stability=0.95,
+            )
+            stable_memory.update(sample)
+            breaking_memory.update(sample)
+
+        stable = stable_memory.update(
+            self._features(
+                4.0,
+                energy=0.3,
+                centroid=0.2,
+                flatness=0.1,
+                harmonicity=0.9,
+                stability=0.95,
+            )
+        )
+        broken = breaking_memory.update(
+            self._features(
+                4.0,
+                energy=0.8,
+                flux=0.9,
+                centroid=0.9,
+                flatness=0.9,
+                harmonicity=0.1,
+                density=0.9,
+                attack=0.8,
+                stability=0.1,
+            )
+        )
+
+        self.assertGreater(broken.regimes.rupture, stable.regimes.rupture + 0.3)
+        self.assertGreater(
+            broken.regimes.transition, stable.regimes.transition + 0.3
+        )
+
+    def test_release_grows_after_tension_falls(self):
+        memory = MusicalMemory()
+        for index in range(120):
+            energy = 0.2 + 0.7 * index / 119
+            memory.update(
+                self._features(
+                    index / 30.0,
+                    energy=energy,
+                    flux=energy,
+                    stability=0.5,
+                )
+            )
+
+        first_release = None
+        final = None
+        for index in range(45):
+            final = memory.update(
+                self._features(
+                    4.0 + index / 30.0,
+                    energy=0.05,
+                    flux=0.0,
+                    stability=0.95,
+                )
+            )
+            if first_release is None:
+                first_release = final
+
+        self.assertGreater(final.regimes.release, first_release.regimes.release)
+        self.assertLess(final.regimes.climax, first_release.regimes.climax)
+
     @staticmethod
     def _features(
         timestamp,
