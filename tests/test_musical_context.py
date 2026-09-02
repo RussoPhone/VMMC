@@ -279,6 +279,20 @@ class MusicalContextTests(unittest.TestCase):
         self.assertEqual(ended.cycle_phase, CyclePhase.ENDED)
         self.assertEqual(ended.cycle_index, 0)
 
+    def test_contextual_silence_threshold_does_not_decay_during_quieting(self):
+        memory = MusicalMemory()
+        for index in range(180):
+            memory.update(self._features(index / 30.0, energy=0.4, flux=0.1))
+
+        quieting = None
+        for index in range(361):
+            quieting = memory.update(
+                self._features(6.0 + index / 30.0, energy=0.011, flux=0.0)
+            )
+
+        self.assertEqual(quieting.cycle_phase, CyclePhase.ENDED)
+        self.assertAlmostEqual(quieting.silence_duration, 12.0, places=6)
+
     def test_real_sound_after_ended_cycle_starts_fresh_landscape(self):
         memory = MusicalMemory()
         for index in range(90):

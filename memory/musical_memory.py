@@ -112,6 +112,7 @@ class MusicalMemory:
         self._cycle_index = 0
         self._silence_started_at = None
         self._silence_duration = 0.0
+        self._silence_threshold = None
 
     def update(self, features) -> MusicalContext:
         self._advance_cycle(features)
@@ -249,6 +250,8 @@ class MusicalMemory:
                 contextual_floor,
                 self._landscape.energy_baseline * 0.08,
             )
+        if self._silence_threshold is not None:
+            contextual_floor = self._silence_threshold
         amplitude = _clamp(features.amplitude)
         flux = _clamp(features.spectral_flux)
         is_active = amplitude > contextual_floor or (
@@ -262,10 +265,12 @@ class MusicalMemory:
             self._cycle_phase = CyclePhase.LISTENING
             self._silence_started_at = None
             self._silence_duration = 0.0
+            self._silence_threshold = None
             return
 
         if self._silence_started_at is None:
             self._silence_started_at = features.timestamp
+            self._silence_threshold = contextual_floor
         self._silence_duration = max(
             0.0, features.timestamp - self._silence_started_at
         )
@@ -286,6 +291,7 @@ class MusicalMemory:
         self._cycle_phase = CyclePhase.LISTENING
         self._silence_started_at = None
         self._silence_duration = 0.0
+        self._silence_threshold = None
 
     def _smooth_regimes(self, targets: RegimeWeights) -> RegimeWeights:
         values = {}
