@@ -2,8 +2,9 @@ import math
 import unittest
 
 from expression.presence_tracker import PresenceEvidence, PresenceStage
+from expression.vocal_field import VocalField
 from memory.musical_memory import SoundSignature
-from state.ecosystem import EcosystemController
+from state.ecosystem import EcosystemController, _Relation
 
 
 class EcosystemTests(unittest.TestCase):
@@ -137,6 +138,93 @@ class EcosystemTests(unittest.TestCase):
         body = state.organisms[0]
         visual_radius = ecosystem.visual_radius(body)
         self.assertLessEqual(math.hypot(body.x, body.y) + visual_radius, 1.6)
+
+    def test_vocal_reach_spreads_continuously_without_creating_a_body(self):
+        presences = tuple(
+            self._presence(index, index / 10.0) for index in range(1, 5)
+        )
+
+        narrow = EcosystemController().update(
+            presences,
+            0.1,
+            vocal_field=VocalField(0.8, 0.15, 0.2, 0.7, 0.3),
+        )
+        wide = EcosystemController().update(
+            presences,
+            0.1,
+            vocal_field=VocalField(0.8, 0.95, 0.2, 0.7, 0.3),
+        )
+
+        self.assertEqual(len(wide.organisms), len(presences))
+        self.assertGreater(
+            wide.vocal_effect.reached_count,
+            narrow.vocal_effect.reached_count,
+        )
+        self.assertGreater(
+            wide.vocal_effect.mean_influence,
+            narrow.vocal_effect.mean_influence,
+        )
+
+    def test_continuous_voice_changes_motion_and_exposes_transient_effect(self):
+        presence = self._presence(4, 0.7)
+        plain = EcosystemController()
+        voiced = EcosystemController()
+        plain.update((presence,), 0.1)
+        voiced.update((presence,), 0.1)
+
+        plain_state = plain.update((presence,), 0.1)
+        voiced_state = voiced.update(
+            (presence,),
+            0.1,
+            vocal_field=VocalField(0.8, 1.0, 0.1, 0.9, 0.7),
+        )
+
+        self.assertGreater(voiced_state.organisms[0].vocal_effect.influence, 0.5)
+        self.assertNotEqual(
+            (
+                voiced_state.organisms[0].velocity_x,
+                voiced_state.organisms[0].velocity_y,
+            ),
+            (
+                plain_state.organisms[0].velocity_x,
+                plain_state.organisms[0].velocity_y,
+            ),
+        )
+        self.assertEqual(
+            voiced_state.organisms[0].genome,
+            plain_state.organisms[0].genome,
+        )
+
+    def test_unrelated_overlapping_forms_separate_softly(self):
+        ecosystem = EcosystemController()
+        presences = (self._presence(1, 0.1), self._presence(2, 0.9))
+        ecosystem.update(presences, 0.1)
+        ecosystem._bodies[1].x = ecosystem._bodies[2].x = 0.5
+        ecosystem._bodies[1].y = ecosystem._bodies[2].y = 0.0
+
+        state = ecosystem.update(presences, 0.1)
+
+        self.assertGreater(self._distance(*state.organisms), 0.0)
+        self.assertEqual(state.collisions.contact_count, 1)
+        self.assertGreater(state.collisions.max_repulsion, 0.0)
+
+    def test_collision_repulsion_fades_through_assimilation(self):
+        low = EcosystemController()
+        high = EcosystemController()
+        presences = (self._presence(1, 0.3), self._presence(2, 0.31))
+        for controller in (low, high):
+            controller.update(presences, 0.1)
+            controller._bodies[1].x = controller._bodies[2].x = 0.5
+            controller._bodies[1].y = controller._bodies[2].y = 0.0
+        high._relations[(1, 2)] = _Relation(fusion=0.9, assimilation=0.85)
+
+        low_state = low.update(presences, 0.1)
+        high_state = high.update(presences, 0.1)
+
+        self.assertLess(
+            high_state.collisions.max_repulsion,
+            low_state.collisions.max_repulsion,
+        )
 
     @staticmethod
     def _presence(identifier, brightness):

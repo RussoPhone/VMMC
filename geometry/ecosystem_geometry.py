@@ -34,6 +34,10 @@ def _rgb(hue, saturation, luminosity):
     )
 
 
+def _clamp(value):
+    return max(0.0, min(1.0, value))
+
+
 class EcosystemGeometryBuilder:
     def __init__(self, vertex_count=40):
         self.vertex_count = max(12, vertex_count)
@@ -79,6 +83,10 @@ class EcosystemGeometryBuilder:
 
     def _organism(self, body, relation, time_elapsed):
         genome = body.genome
+        effect = body.vocal_effect
+        fluidity = _clamp(genome.fluidity + effect.fluidity * 0.35)
+        roughness = _clamp(genome.roughness + effect.roughness * 0.45)
+        tension = effect.tension
         mass_scale = math.sqrt(max(.01, body.mass) / .1)
         scale = (.13 + genome.mass * .15 + body.prominence * .09) * (.35 + body.visibility * .65) * mass_scale
         vertices = []
@@ -86,11 +94,17 @@ class EcosystemGeometryBuilder:
         speed = min(1.0, math.hypot(body.velocity_x, body.velocity_y))
         for index in range(self.vertex_count):
             angle = math.tau * index / self.vertex_count
-            wave = math.sin(angle * 3 + time_elapsed * (.35 + genome.fluidity * .45)) * genome.wave * .045
+            wave = math.sin(angle * 3 + time_elapsed * (.35 + fluidity * .45)) * genome.wave * .045
             shard = max(0, math.sin(angle * 7 + time_elapsed * genome.elasticity)) ** 5 * genome.shard * .12
-            rough = math.sin(angle * 13 + body.identifier) * genome.roughness * .035
+            rough = math.sin(angle * 13 + body.identifier) * roughness * .035
+            rough += (
+                math.sin(angle * 17 + time_elapsed * 0.9 + body.identifier)
+                * effect.roughness
+                * 0.06
+            )
+            vocal_tension = math.sin(angle * 2 - time_elapsed * 1.3) * tension * 0.08
             asymmetry = math.sin(angle + body.identifier) * (1-genome.symmetry) * .1
-            mutation = genome.roughness * .55 + genome.shard * .45
+            mutation = roughness * .55 + genome.shard * .45
             living_lobes = math.sin(
                 angle * (4 + round(genome.shard * 5))
                 + time_elapsed * (1.4 + genome.elasticity * 2.2)
@@ -105,9 +119,9 @@ class EcosystemGeometryBuilder:
             concavity *= genome.roughness * .18
             radius = scale * (
                 1 + wave + shard + rough + asymmetry + living_lobes
-                + extension - concavity
+                + extension - concavity + vocal_tension
             )
-            stretch = 1 + speed * .55 + genome.shard * .22
+            stretch = 1 + speed * .55 + genome.shard * .22 + tension * 0.16
             local_x = math.cos(angle) * radius * stretch
             local_y = math.sin(angle) * radius / math.sqrt(stretch)
             cos_o, sin_o = math.cos(orientation), math.sin(orientation)
